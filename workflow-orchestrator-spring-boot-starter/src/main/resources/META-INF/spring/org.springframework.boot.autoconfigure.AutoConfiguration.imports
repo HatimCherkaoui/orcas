@@ -1,0 +1,7 @@
+com.github.orcas.orchestrator.autoconfigure.WorkflowPropertiesAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowJdbcAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowKafkaInfrastructureAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowCoreAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowKafkaConsumerAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowAopAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.WorkflowRestClientAutoConfiguration

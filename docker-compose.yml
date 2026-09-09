@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:18.6
+    container_name: workflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orchestrator
+      POSTGRES_USER: orchestrator
+      POSTGRES_PASSWORD: orchestrator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U orchestrator -d orchestrator" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: workflow-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:29093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  wiremock:
+    image: wiremock/wiremock:3.13.2
+    container_name: workflow-wiremock
+    restart: unless-stopped
+    command: ["--verbose"]
+    volumes:
+      - ./wiremock:/home/wiremock:ro
+    ports:
+      - "8089:8080"
+  example-app:
+    build:
+      context: .
+      dockerfile: example-app/Dockerfile
+    container_name: workflow-example-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      wiremock:
+        condition: service_started
+    environment:
+      SERVER_PORT: 8080
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orchestrator
+      SPRING_DATASOURCE_USERNAME: orchestrator
+      SPRING_DATASOURCE_PASSWORD: orchestrator
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_CONSUMER_GROUP_ID: workflow-orchestrator
+      SPRING_KAFKA_CONSUMER_AUTO_OFFSET_RESET: earliest
+      SPRING_KAFKA_PRODUCER_KEY_SERIALIZER: org.apache.kafka.common.serialization.StringSerializer
+      SPRING_KAFKA_PRODUCER_VALUE_SERIALIZER: org.apache.kafka.common.serialization.StringSerializer
+      SPRING_KAFKA_CONSUMER_KEY_DESERIALIZER: org.apache.kafka.common.serialization.StringDeserializer
+      SPRING_KAFKA_CONSUMER_VALUE_DESERIALIZER: org.apache.kafka.common.serialization.StringDeserializer
+      DEMO_CUSTOMER_BASE_URL: http://wiremock:8080
+      DEMO_INVENTORY_BASE_URL: http://wiremock:8080
+      JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
+    ports:
+      - "8080:8080"
+
+  dashboard:
+    build:
+      context: ./workflow-orchestrator-dashboard
+      dockerfile: Dockerfile
+    container_name: workflow-dashboard
+    restart: unless-stopped
+    depends_on:
+      - example-app
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+  kafka_data:

@@ -1,0 +1,3 @@
+# Optional local-development override.
+# The base compose file is already ready to run the complete stack.
+services: {}

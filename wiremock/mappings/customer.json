@@ -1,0 +1,4 @@
+{
+  "request": {"method":"GET","urlPathPattern":"/customers/.*"},
+  "response": {"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"customer","status":"OK"}}
+}

@@ -1,0 +1,130 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/workflow
+    username: workflow
+    password: workflow
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: workflow-orchestrator
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+workflow:
+  orchestrator:
+    topic: workflow.status
+    consumer-group: workflow-orchestrator
+    persistence:
+      schema-initialization: true
+    async:
+      virtual-threads: true
+      concurrency: 32
+    kafka:
+      concurrency: 1
+      missing-topics-fatal: false
+    retry:
+      enabled: true
+      max-attempts: 5
+      delay: 2s
+      steps:
+        notify:
+          max-attempts: 8
+          delay: 1s
+        load-db:
+          max-attempts: 3
+          delay: 5s
+    service:
+      enabled: true
+      base-path: /api/orchestrator
+      default-page-size: 25
+      kafka:
+        enabled: true
+        timeout-seconds: 5
+    rest-client:
+      connect-timeout: 5s
+      response-timeout: 20s
+      max-connections: 100
+      pending-acquire-timeout: 30s
+      cache:
+        enabled: false
+      security:
+        bearer-token: ${DEMO_CUSTOMER_BEARER:}
+    circuit-breaker:
+      enabled: true
+      sliding-window-size: 20
+      minimum-number-of-calls: 10
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 30s
+      instances:
+        customer:
+          failure-rate-threshold: 50
+
+server:
+  port: 8080
+
+demo:
+  customer:
+    base-url: ${DEMO_CUSTOMER_BASE_URL:https://httpbin.org}
+  inventory:
+    base-url: ${DEMO_INVENTORY_BASE_URL:https://httpbin.org}
+
+# ---------------------------------------------------------------------------
+# Logging & tracing
+# ---------------------------------------------------------------------------
+# Every log line emitted while a workflow step runs carries workflowId/workflow/step
+# MDC fields (see WorkflowContextHolder) plus, once a request/consumer record is
+# traced, traceId/spanId contributed by Micrometer Tracing. That makes it trivial to
+# correlate logs, metrics and traces for a single workflow execution across the three
+# observability pillars.
+#
+# Log levels are fully controllable at runtime without a restart:
+#   - via environment variables at startup, e.g. LOGGING_LEVEL_COM_GITHUB_ORCAS_ORCHESTRATOR=DEBUG
+#   - via the Actuator endpoint while running, e.g.
+#       curl -X POST localhost:8080/actuator/loggers/com.github.orcas.orchestrator \
+#            -H 'Content-Type: application/json' -d '{"configuredLevel":"DEBUG"}'
+#     (GET the same URL to read the effective level)
+logging:
+  level:
+    root: ${LOGGING_LEVEL_ROOT:INFO}
+    com.github.orcas.orchestrator: ${LOGGING_LEVEL_COM_GITHUB_ORCAS_ORCHESTRATOR:INFO}
+    com.github.orcas.demo: ${LOGGING_LEVEL_COM_GITHUB_ORCAS_DEMO:INFO}
+  # Structured (JSON) logging is built into Spring Boot: set LOG_FORMAT=ecs (Elastic
+  # Common Schema, ready for Filebeat/Logstash -> Elasticsearch/Kibana) or
+  # LOG_FORMAT=logstash (Logstash JSON format, also Kibana/Loki friendly) to switch the
+  # console appender from human-readable text to line-delimited JSON, e.g.:
+  #   LOG_FORMAT=ecs java -jar app.jar
+  # Leave unset for a human-readable console during local development.
+  structured:
+    format:
+      console: ${LOG_FORMAT:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # loggers: runtime log-level control (see above)
+        # health/info: liveness/readiness for k8s and uptime dashboards
+        # metrics/prometheus: scraped by Prometheus and visualized in Grafana
+        include: health,info,loggers,metrics,prometheus
+  endpoint:
+    loggers:
+      access: unrestricted
+    health:
+      probes:
+        enabled: true
+  tracing:
+    sampling:
+      # Sample every request by default (dev-friendly); lower this in production,
+      # e.g. via TRACING_SAMPLING_PROBABILITY=0.1 for 10%.
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      # OTLP/HTTP endpoint of an OpenTelemetry Collector or Grafana Tempo/Alloy
+      # ingestion endpoint. Traces are only exported once a collector is reachable;
+      # tracing/log correlation still works locally without one configured.
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
