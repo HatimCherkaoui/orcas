@@ -49,6 +49,15 @@ button {
   font-size: 12px;
 }
 
+/* Truncation utility: prevents long, unbreakable text (IDs, names) from
+   overflowing its column and pushing grid/flex tracks out of alignment. */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ==========================================================================
    List-style page chrome (Pipelines list, Kafka admin) - these pages scroll
    normally. Only the graph dashboard (below) is a fixed, non-scrolling view.
@@ -164,6 +173,12 @@ button {
   text-align: left;
 }
 
+.nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nav-item:hover,
 .nav-item.active {
   background: var(--orca-black-soft);
@@ -235,6 +250,12 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 14px;
+}
+
+.page-header > div:first-child {
+  min-width: 0;
+  flex: 1;
 }
 
 .eyebrow {
@@ -243,24 +264,32 @@ button {
   letter-spacing: 0.09em;
   font-weight: 800;
   color: #687386;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-header h1 {
   margin: 2px 0 0;
   font-size: 20px;
-  line-height: 1.15;
+  line-height: 1.25;
   color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-header p {
   margin: 4px 0 0;
   color: #697586;
   font-size: 13px;
+  line-height: 1.4;
 }
 
 .header-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .content {
@@ -283,6 +312,10 @@ button {
   gap: 7px;
   align-items: center;
   color: #344054;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .button:hover {
@@ -335,6 +368,10 @@ button {
   margin: 3px 0 0;
   font-size: 17px;
   color: #172033;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .stats-grid {
@@ -362,6 +399,11 @@ button {
   padding: 11px 13px;
 }
 
+.stat > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .stat-icon {
   width: 30px;
   height: 30px;
@@ -370,12 +412,17 @@ button {
   display: grid;
   place-items: center;
   color: #526070;
+  flex-shrink: 0;
 }
 
 .stat small {
   display: block;
   color: #697586;
   font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stat strong {
@@ -383,6 +430,10 @@ button {
   color: #172033;
   margin-top: 2px;
   font-size: 14px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter-card {
@@ -422,6 +473,10 @@ button {
   color: #344054;
   padding: 0 10px;
   min-width: 0;
+  font-size: 14px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .field.has-icon input {
@@ -433,6 +488,7 @@ button {
   left: 9px;
   color: #8a94a6;
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .field-label {
@@ -444,13 +500,18 @@ button {
   padding: 0 4px;
   color: #8a94a6;
   font-size: 13px;
+  line-height: 1;
   pointer-events: none;
   white-space: nowrap;
+  max-width: calc(100% - 18px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: top 0.12s ease, transform 0.12s ease, font-size 0.12s ease, color 0.12s ease;
 }
 
 .field.has-icon .field-label {
   left: 30px;
+  max-width: calc(100% - 40px);
 }
 
 .field.active .field-label {
@@ -459,12 +520,34 @@ button {
   color: var(--ocean-500);
   font-weight: 650;
   left: 9px;
+  max-width: calc((100% - 18px) / 0.82);
 }
 
 .field input:focus,
 .field select:focus {
   outline: none;
   border-color: var(--ocean-500);
+}
+
+/* Native <input type="date"> always renders its "mm/dd/yyyy" placeholder
+   segments, which sit directly under the floating label at rest and read as
+   overlapping text. Hide that placeholder text (not the calendar icon) until
+   the field is focused or already has a value - matching the floating-label
+   fields, the placeholder only appears while the user is actively typing. */
+.field:not(.active) input[type="date"] {
+  color: transparent;
+}
+
+.field:not(.active) input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+.field:not(.active) input[type="date"]::-webkit-datetime-edit-text,
+.field:not(.active) input[type="date"]::-webkit-datetime-edit-month-field,
+.field:not(.active) input[type="date"]::-webkit-datetime-edit-day-field,
+.field:not(.active) input[type="date"]::-webkit-datetime-edit-year-field {
+  color: transparent;
+}
+
+.field input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.65;
 }
 
 .table-head,
@@ -475,6 +558,18 @@ button {
   align-items: center;
   padding: 9px 14px;
   text-align: left;
+}
+
+/* Grid items default to `min-width: auto`, which lets long, unbreakable
+   content (IDs, names) grow a column past its `fr` share and desync the
+   header from the rows below it. Force them to respect the track width and
+   truncate instead, so every column lines up perfectly at any size. */
+.table-head > *,
+.table-row > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-head {
@@ -492,6 +587,7 @@ button {
   border-top: 1px solid #edf0f4;
   background: #fff;
   color: #202b3c;
+  font-size: 13px;
 }
 
 .table-row:hover {
@@ -503,12 +599,19 @@ button {
   align-items: center;
   gap: 5px;
   width: max-content;
+  max-width: 100%;
   border-radius: 999px;
   padding: 4px 8px;
   font-size: 10px;
   font-weight: 800;
   background: #eef1f5;
   color: #596578;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.status svg {
+  flex-shrink: 0;
 }
 
 .status-success {
@@ -606,6 +709,7 @@ button {
   color: #697586;
   padding: 11px 2px;
   position: relative;
+  white-space: nowrap;
 }
 
 .tabs button.active {
@@ -636,16 +740,22 @@ button {
 
 .details {
   display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 8px;
+  grid-template-columns: minmax(88px, 112px) 1fr;
+  gap: 8px 12px;
 }
 
 .details dt {
   color: #7b8797;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 1px;
 }
 
 .details dd {
   margin: 0;
+  min-width: 0;
   word-break: break-word;
 }
 
@@ -659,11 +769,19 @@ button {
   gap: 4px;
   padding: 12px 0;
   border-bottom: 1px solid #edf0f4;
+  min-width: 0;
 }
 
 .log-row time {
   font-size: 11px;
   color: #7b8797;
+}
+
+.log-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 
 .log-row code {
@@ -698,12 +816,19 @@ button {
   border-top: 1px solid #edf0f4;
   font-size: 12px;
   color: #697586;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pagination-count {
+  white-space: nowrap;
 }
 
 .pagination-controls {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .pagination-page {
@@ -781,6 +906,8 @@ button {
   color: #667085;
   font-size: 11px;
   font-weight: 800;
+  flex-shrink: 0;
+  padding: 0 6px;
 }
 
 .resource-list {
@@ -808,6 +935,14 @@ button {
   background: var(--ocean-50);
 }
 
+.resource strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .resource-icon {
   width: 30px;
   height: 30px;
@@ -832,6 +967,14 @@ button {
   padding: 10px 6px;
   text-align: left;
   border-radius: 6px;
+}
+
+.group-head > *,
+.group-row > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group-head {
@@ -863,6 +1006,13 @@ button {
   gap: 20px;
   padding: 11px 0;
   border-bottom: 1px solid #edf0f4;
+}
+
+.kv-row > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -913,18 +1063,23 @@ button {
 .graph-topbar-title span {
   font-size: 11px;
   color: #8a94a6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .graph-topbar-count {
   color: #8a94a6;
   font-size: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .graph-topbar-tabs {
   display: flex;
   gap: 4px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .graph-topbar-tabs button {
@@ -938,6 +1093,7 @@ button {
   padding: 0 12px;
   color: #475467;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .graph-topbar-tabs button:hover {
@@ -1032,15 +1188,32 @@ button {
   color: #8a94a6;
 }
 
+.rf-step-node.state-init .rf-step-icon {
+  background: var(--ocean-50);
+  color: var(--ocean-600);
+}
+
+.rf-step-node.state-started .rf-step-icon {
+  background: #fff5dc;
+  color: #9a6700;
+}
+
+.rf-step-node.state-skipped .rf-step-icon {
+  background: #f0eefb;
+  color: #6955a5;
+}
+
 .rf-step-body {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 .rf-step-body strong {
   font-size: 13px;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1052,6 +1225,9 @@ button {
   letter-spacing: 0.05em;
   font-weight: 700;
   color: #8a94a6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rf-step-node.state-success .rf-step-state {
@@ -1068,6 +1244,18 @@ button {
 
 .rf-step-node.state-suspended .rf-step-state {
   color: #9a6700;
+}
+
+.rf-step-node.state-init .rf-step-state {
+  color: var(--ocean-600);
+}
+
+.rf-step-node.state-started .rf-step-state {
+  color: #9a6700;
+}
+
+.rf-step-node.state-skipped .rf-step-state {
+  color: #6955a5;
 }
 
 .react-flow__edge.rf-edge-parallel .react-flow__edge-path {
@@ -1154,7 +1342,12 @@ button {
 .floating-panel-header h2 {
   margin: 2px 0 0;
   font-size: 16px;
+  line-height: 1.3;
   word-break: break-word;
+}
+
+.floating-panel-header .status {
+  margin-top: 2px;
 }
 
 .floating-panel .tabs {
@@ -1222,6 +1415,12 @@ button {
   .page-header {
     padding: 14px;
     align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .content,
@@ -1242,8 +1441,15 @@ button {
   }
 
   .table-row {
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     padding: 13px;
+  }
+
+  .table-row > * {
+    max-width: 100%;
   }
 
   .group-head {
@@ -1251,7 +1457,15 @@ button {
   }
 
   .group-row {
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .group-row > * {
+    max-width: 100%;
   }
 
   .floating-panel {
@@ -1271,3 +1485,4 @@ button {
     display: none;
   }
 }
+

@@ -112,11 +112,11 @@ export default function PipelineListPage({ navigate }) {
                 key={row.workflowId}
                 onClick={() => navigate(`/${encodeURIComponent(row.workflowId)}`)}
               >
-                <strong>{row.workflow}</strong>
+                <strong title={row.workflow}>{row.workflow}</strong>
                 <StatusBadge value={row.status} />
-                <span>{row.currentStep || '—'}</span>
+                <span title={row.currentStep || undefined}>{row.currentStep || '—'}</span>
                 <time>{row.dateCreated ? new Date(row.dateCreated).toLocaleString() : '—'}</time>
-                <code>{row.workflowId}</code>
+                <code className="mono" title={row.workflowId}>{row.workflowId}</code>
               </button>
             ))}
             {load.data && (
@@ -133,3 +133,4 @@ export default function PipelineListPage({ navigate }) {
     </Shell>
   );
 }
+

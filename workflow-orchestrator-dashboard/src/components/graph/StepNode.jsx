@@ -1,19 +1,34 @@
 import { Handle, Position } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Clock3, Play } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Circle, Clock3, Play, SkipForward } from 'lucide-react';
 
+/**
+ * Visual metadata for every status the engine actually emits (`Status.java`:
+ * INIT, STARTED, RUNNING, RUNNING_ASYNC, SUCCESS, FAILED, SUSPENDED, SKIPPED),
+ * plus the dashboard-only `PENDING` sentinel used for steps the graph knows
+ * about (via route metadata) but that haven't recorded any state yet. Steps
+ * must always resolve to their *own* status here - never silently fall back
+ * to the "not reached" PENDING look, or a resolved step (e.g. INIT once it
+ * moves on) would incorrectly still read as pending.
+ */
 const STATE_META = {
+  INIT: { icon: Circle, className: 'init' },
+  STARTED: { icon: Clock3, className: 'started' },
+  RUNNING: { icon: Play, className: 'running' },
+  RUNNING_ASYNC: { icon: Play, className: 'running' },
   SUCCESS: { icon: CheckCircle2, className: 'success' },
   FAILED: { icon: AlertCircle, className: 'failed' },
   SUSPENDED: { icon: AlertCircle, className: 'suspended' },
-  RUNNING: { icon: Play, className: 'running' },
-  RUNNING_ASYNC: { icon: Play, className: 'running' },
+  SKIPPED: { icon: SkipForward, className: 'skipped' },
   PENDING: { icon: Clock3, className: 'pending' },
 };
 
 /** Custom React Flow node rendering a single workflow step as a compact status card. */
 export function StepNode({ data, selected }) {
-  const state = String(data.step.state || 'UNKNOWN').toUpperCase();
-  const meta = STATE_META[state] || STATE_META.PENDING;
+  const state = String(data.step.state || 'PENDING').toUpperCase();
+  // Fall back to a status-derived class (not PENDING) for any future/unknown
+  // status name, so the node still reflects its real state dynamically
+  // instead of looking indistinguishable from a step that hasn't started.
+  const meta = STATE_META[state] || { icon: Clock3, className: state.toLowerCase() };
   const Icon = meta.icon;
 
   return (
@@ -24,7 +39,7 @@ export function StepNode({ data, selected }) {
       </div>
       <div className="rf-step-body">
         <strong>{data.step.stepName}</strong>
-        <span className="rf-step-state">{state.replace('_', ' ')}</span>
+        <span className="rf-step-state">{state.replace(/_/g, ' ')}</span>
       </div>
       <Handle type="source" position={Position.Right} />
     </div>

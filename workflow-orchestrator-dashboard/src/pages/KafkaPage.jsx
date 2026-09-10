@@ -72,7 +72,7 @@ export default function KafkaPage({ navigate }) {
                         <span className="resource-icon">
                           <TerminalSquare size={16} />
                         </span>
-                        <strong>{name}</strong>
+                        <strong title={name}>{name}</strong>
                       </button>
                     ))}
                   </div>
@@ -103,7 +103,7 @@ export default function KafkaPage({ navigate }) {
                         key={g.groupId}
                         onClick={() => api.consumerGroup(g.groupId).then(setGroup)}
                       >
-                        <strong className="mono">{g.groupId}</strong>
+                        <strong className="mono" title={g.groupId}>{g.groupId}</strong>
                         <StatusBadge value={g.state} />
                         <span>{Object.keys(g.offsets || {}).length}</span>
                       </button>
@@ -154,8 +154,8 @@ export default function KafkaPage({ navigate }) {
               {Object.entries(group.offsets || {}).length ? (
                 Object.entries(group.offsets || {}).map(([key, value]) => (
                   <div className="kv-row" key={key}>
-                    <strong className="mono">{key}</strong>
-                    <span>{value}</span>
+                    <strong className="mono" title={key}>{key}</strong>
+                    <span title={String(value)}>{value}</span>
                   </div>
                 ))
               ) : (
@@ -168,3 +168,4 @@ export default function KafkaPage({ navigate }) {
     </Shell>
   );
 }
+
