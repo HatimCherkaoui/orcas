@@ -1,0 +1,19 @@
+name: orcas
+display_name: Orcas — Orchestrator Architector
+version: 0.1.0
+manifest_version: 1
+author: HatimCherkaoui
+language: en
+description: |
+  Agent that provides authoritative guidance about the workflow-orchestrator project
+  (architecture, common change patterns, run/build/test commands, and file locations).
+entrypoint: README.md
+context_file: context.md
+capabilities:
+  - guidance
+  - code-review
+  - run-advice
+commands:
+  - name: guide
+    description: Provide architecture guidance, file locations, and step-by-step commands to implement changes or run the project
+    run: "refer to README.md and context.md"
