@@ -56,6 +56,9 @@ export default function PipelineDetailPage({ id, navigate }) {
   if (workflow.error) return <CenteredState><ErrorState error={workflow.error} retry={workflow.reload} /></CenteredState>;
 
   const activeInfoTab = INFO_TABS.find((tab) => tab.id === infoTab);
+  // Static per-step configuration (async flag + effective retry policy) returned
+  // alongside the routing graph by `/workflows/definitions/{workflow}`.
+  const stepConfigs = definition.data?.stepConfigs || {};
 
   return (
     <div className="graph-page">
@@ -106,6 +109,7 @@ export default function PipelineDetailPage({ id, navigate }) {
         <StepDetailsPanel
           pipelineId={pipelineId}
           step={selectedStep}
+          stepConfig={stepConfigs[selectedStep.stepName]}
           onClose={() => setSelectedStep(null)}
           onReplayed={refresh}
         />
@@ -127,3 +131,4 @@ export default function PipelineDetailPage({ id, navigate }) {
 function CenteredState({ children }) {
   return <div className="graph-page graph-page-centered">{children}</div>;
 }
+

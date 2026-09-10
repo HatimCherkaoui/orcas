@@ -3,10 +3,12 @@ package com.github.orcas.orchestrator.autoconfigure;
 import com.github.orcas.orchestrator.autoconfigure.aop.WorkflowCircuitBreakerAspect;
 import com.github.orcas.orchestrator.autoconfigure.aop.WorkflowLaunchAspect;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import com.github.orcas.orchestrator.core.engine.WorkflowStateStore;
 import com.github.orcas.orchestrator.core.error.DefaultWorkflowErrorCategorizer;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -57,7 +59,9 @@ public class WorkflowAopAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(WorkflowRetryScheduler.class)
     @ConditionalOnBean(WorkflowEngine.class)
-    WorkflowRetryScheduler workflowRetryScheduler(WorkflowEngine engine) { return new WorkflowRetryScheduler(engine); }
+    WorkflowRetryScheduler workflowRetryScheduler(WorkflowEngine engine, ObjectProvider<WorkflowStateStore> stateStoreProvider) {
+        return new WorkflowRetryScheduler(engine, stateStoreProvider.getIfAvailable());
+    }
 
     @Bean
     @ConditionalOnMissingBean(WorkflowCircuitBreakerAspect.class)
@@ -66,3 +70,4 @@ public class WorkflowAopAutoConfiguration {
         return new WorkflowCircuitBreakerAspect(registry, categorizer, scheduler);
     }
 }
+

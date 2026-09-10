@@ -243,6 +243,26 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
         return status == Status.SUCCESS || status == Status.FAILED || status == Status.SKIPPED;
     }
 
+    @Override
+    public void recordRetry(String workflowId, String stepName, int attempt, String reason) {
+        Timestamp now = Timestamp.from(Instant.now());
+        log.info("Recording retry attempt {} for workflow instance {} step '{}': {}", attempt, workflowId, stepName, reason);
+        inRetryableTransaction(() -> {
+            jdbc.update("""
+                            update workflow_step
+                               set retry_count = retry_count + 1, date_updated = :updated
+                             where pipeline_id=:id and step_name=:step
+                            """,
+                    new MapSqlParameterSource()
+                            .addValue("id", workflowId, Types.VARCHAR)
+                            .addValue("step", stepName, Types.VARCHAR)
+                            .addValue("updated", now, Types.TIMESTAMP));
+
+            logStep(workflowId, stepName, "RETRY",
+                    json(Map.of("attempt", attempt, "reason", reason == null ? "" : reason)), now);
+        });
+    }
+
 
     @Override
     public String workflowName(String id) {
@@ -441,3 +461,4 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
         jdbc.update(sql, p);
     }
 }
+

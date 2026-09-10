@@ -82,7 +82,7 @@ public interface WorkflowQueryService {
 
     /** A single recorded step execution and its lifecycle timestamps. */
     record WorkflowStepView(String workflowId, String workflow, String stepName,
-                            String typeClassName, String state, Instant dateStarted,
+                            String typeClassName, String state, int retryCount, Instant dateStarted,
                             Instant dateEnded, Instant dateUpdated) {
     }
 

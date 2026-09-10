@@ -1,5 +1,6 @@
 package com.github.orcas.orchestrator.service;
 
+import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryProperties;
 import com.github.orcas.orchestrator.service.api.KafkaService;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
@@ -59,8 +60,9 @@ public class WorkflowServiceAutoConfiguration {
     @ConditionalOnBean({WorkflowQueryService.class, WorkflowAdminService.class})
     WorkflowServiceController workflowServiceController(
             WorkflowQueryService query,
-            WorkflowAdminService admin, WorkflowRegistry registry) {
-        return new WorkflowServiceController(query, admin, registry);
+            WorkflowAdminService admin, WorkflowRegistry registry,
+            WorkflowRetryProperties retryProperties) {
+        return new WorkflowServiceController(query, admin, registry, retryProperties);
     }
 
     @Bean

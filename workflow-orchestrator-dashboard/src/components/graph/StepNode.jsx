@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Circle, Clock3, Play, SkipForward } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Circle, Clock3, Play, RotateCcw, SkipForward } from 'lucide-react';
 
 /**
  * Visual metadata for every status the engine actually emits (`Status.java`:
@@ -30,6 +30,9 @@ export function StepNode({ data, selected }) {
   // instead of looking indistinguishable from a step that hasn't started.
   const meta = STATE_META[state] || { icon: Clock3, className: state.toLowerCase() };
   const Icon = meta.icon;
+  // Number of automatic retries recorded for this step by the engine. Only shown
+  // when non-zero so healthy steps stay visually clean.
+  const retries = Number(data.step.retryCount) || 0;
 
   return (
     <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''}`}>
@@ -41,9 +44,19 @@ export function StepNode({ data, selected }) {
         <strong>{data.step.stepName}</strong>
         <span className="rf-step-state">{state.replace(/_/g, ' ')}</span>
       </div>
+      {retries > 0 && (
+        <span
+          className="rf-step-retries"
+          title={`${retries} automatic ${retries === 1 ? 'retry' : 'retries'} recorded`}
+        >
+          <RotateCcw size={11} />
+          {retries}
+        </span>
+      )}
       <Handle type="source" position={Position.Right} />
     </div>
   );
 }
 
 export const nodeTypes = { stepNode: StepNode };
+

@@ -3,6 +3,8 @@ package com.github.orcas.orchestrator.service;
 import com.github.orcas.orchestrator.service.api.WorkflowAdminService;
 import com.github.orcas.orchestrator.service.api.WorkflowQueryService;
 import com.github.orcas.orchestrator.service.api.WorkflowQueryService.*;
+import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryProperties;
+import com.github.orcas.orchestrator.core.api.AsyncStep;
 import com.github.orcas.orchestrator.core.builder.WorkflowDefinition;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
 import org.slf4j.Logger;
@@ -11,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -29,9 +32,14 @@ public final class WorkflowServiceController {
     private final WorkflowQueryService query;
     private final WorkflowAdminService admin;
     private final WorkflowRegistry registry;
+    private final WorkflowRetryProperties retryProperties;
 
-    public WorkflowServiceController(WorkflowQueryService query, WorkflowAdminService admin, WorkflowRegistry registry) {
-        this.query = query; this.admin = admin; this.registry = registry;
+    public WorkflowServiceController(WorkflowQueryService query, WorkflowAdminService admin,
+                                     WorkflowRegistry registry, WorkflowRetryProperties retryProperties) {
+        this.query = query;
+        this.admin = admin;
+        this.registry = registry;
+        this.retryProperties = retryProperties;
     }
 
     @GetMapping
@@ -60,7 +68,7 @@ public final class WorkflowServiceController {
     public ResponseEntity<WorkflowGraph> definition(@PathVariable("workflow") String workflow) {
         var definition = registry.get(workflow);
         if (definition == null) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(WorkflowGraph.from(definition));
+        return ResponseEntity.ok(WorkflowGraph.from(definition, retryProperties));
     }
 
     @GetMapping("/{id}/steps")
@@ -146,9 +154,48 @@ public final class WorkflowServiceController {
     }
 }
 
-record WorkflowGraph(String workflow, java.util.List<RouteGraph> routes) {
-    static WorkflowGraph from(WorkflowDefinition d) {
-        return new WorkflowGraph(d.name(), d.routes().stream().map(RouteGraph::from).toList());
+/**
+ * Routing graph of a workflow definition, plus the static per-step configuration
+ * ({@code stepConfigs}) resolved from the definition and the effective retry
+ * properties. The dashboard renders {@code routes} as the graph edges and surfaces
+ * {@code stepConfigs} in the step details "Configuration" tab.
+ */
+record WorkflowGraph(String workflow, java.util.List<RouteGraph> routes, Map<String, StepConfig> stepConfigs) {
+    static WorkflowGraph from(WorkflowDefinition d, WorkflowRetryProperties retry) {
+        Map<String, StepConfig> configs = new LinkedHashMap<>();
+        for (WorkflowDefinition.Route route : d.routes()) {
+            route.steps().forEach(step -> configs.putIfAbsent(step.name(), StepConfig.from(step, retry)));
+            if (route.joinStep() != null) {
+                configs.putIfAbsent(route.joinStep().name(), StepConfig.from(route.joinStep(), retry));
+            }
+        }
+        return new WorkflowGraph(d.name(), d.routes().stream().map(RouteGraph::from).toList(), configs);
+    }
+}
+
+/**
+ * Static configuration of a single step as the engine will actually apply it:
+ * whether it runs asynchronously, and the effective retry policy (per-step override
+ * from {@code workflow.orchestrator.retry.steps.<name>.*} when present, otherwise the
+ * workflow-wide defaults).
+ *
+ * @param stepName    the step's unique name
+ * @param async       {@code true} when the step is an {@link AsyncStep} (dispatched to the async executor)
+ * @param retryEnabled whether automatic retries are enabled at all
+ * @param maxAttempts effective maximum number of attempts before the workflow suspends
+ * @param delayMillis effective delay between attempts, in milliseconds
+ * @param overridden  {@code true} when a per-step retry override is configured for this step
+ */
+record StepConfig(String stepName, boolean async, boolean retryEnabled,
+                  int maxAttempts, long delayMillis, boolean overridden) {
+    static StepConfig from(com.github.orcas.orchestrator.core.api.WorkflowStep step, WorkflowRetryProperties retry) {
+        var override = retry.getSteps().get(step.name());
+        int attempts = override != null && override.getMaxAttempts() != null
+                ? override.getMaxAttempts() : retry.getMaxAttempts();
+        var delay = override != null && override.getDelay() != null
+                ? override.getDelay() : retry.getDelay();
+        return new StepConfig(step.name(), step instanceof AsyncStep, retry.isEnabled(),
+                attempts, delay == null ? 0L : delay.toMillis(), override != null);
     }
 }
 
@@ -156,7 +203,8 @@ record RouteGraph(String triggerStep, String triggerStatus, String mode, java.ut
     static RouteGraph from(WorkflowDefinition.Route r) {
         String trigger = r.criteria().expectedStep();
         String status = r.criteria().expectedStatus().name();
-        String mode = r.joinStep() != null ? "PARALLEL" : r.steps().stream().anyMatch(s -> s instanceof com.github.orcas.orchestrator.core.api.AsyncStep) ? "ASYNC" : "SEQUENTIAL";
+        String mode = r.joinStep() != null ? "PARALLEL" : r.steps().stream().anyMatch(s -> s instanceof AsyncStep) ? "ASYNC" : "SEQUENTIAL";
         return new RouteGraph(trigger, status, mode, r.steps().stream().map(com.github.orcas.orchestrator.core.api.WorkflowStep::name).toList(), r.joinStep() == null ? null : r.joinStep().name());
     }
 }
+

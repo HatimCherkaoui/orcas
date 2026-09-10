@@ -9,6 +9,7 @@ import { Tabs } from '../layout/Tabs';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'config', label: 'Configuration' },
   { id: 'input', label: 'Input' },
   { id: 'output', label: 'Output' },
   { id: 'logs', label: 'Logs' },
@@ -16,17 +17,35 @@ const TABS = [
 
 const REPLAYABLE_STATES = ['FAILED', 'SUSPENDED'];
 
+/** Formats a millisecond duration into a short, readable string (e.g. `5s`, `1m 30s`). */
+function formatDuration(millis) {
+  if (millis == null) return '—';
+  if (millis < 1000) return `${millis}ms`;
+  const totalSeconds = Math.round(millis / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (!minutes) return `${seconds}s`;
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 /**
  * Floating card shown alongside the graph when a step node is selected. Loads the
  * step's context/attributes and audit logs on demand and lets operators replay
  * failed or suspended steps without leaving the graph view.
+ *
+ * The `stepConfig` prop carries the static configuration for this step, resolved
+ * from the workflow definition plus the effective retry properties
+ * (`{ async, retryEnabled, maxAttempts, delayMillis, overridden }`), and is
+ * surfaced in the "Configuration" tab.
  */
-export function StepDetailsPanel({ pipelineId, step, onClose, onReplayed }) {
+export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onReplayed }) {
   const [tab, setTab] = useState('overview');
   const [replaying, setReplaying] = useState(false);
 
   const context = useLoad(() => api.stepContext(pipelineId, step.stepName), [pipelineId, step.stepName]);
   const logs = useLoad(() => api.stepLogs(pipelineId, step.stepName), [pipelineId, step.stepName]);
+
+  const retries = Number(step.retryCount) || 0;
 
   async function replay() {
     setReplaying(true);
@@ -62,10 +81,44 @@ export function StepDetailsPanel({ pipelineId, step, onClose, onReplayed }) {
             <dd>{step.dateStarted ? new Date(step.dateStarted).toLocaleString() : '—'}</dd>
             <dt>Ended</dt>
             <dd>{step.dateEnded ? new Date(step.dateEnded).toLocaleString() : '—'}</dd>
+            <dt>Retries</dt>
+            <dd>
+              {retries > 0 ? (
+                <span className="status status-suspended">
+                  <RotateCcw size={12} />
+                  {retries}
+                </span>
+              ) : (
+                'None'
+              )}
+            </dd>
             <dt>Parent step</dt>
             <dd className="mono">{context.data?.parentStepName || '—'}</dd>
           </dl>
         )}
+
+        {tab === 'config' &&
+          (stepConfig ? (
+            <dl className="details">
+              <dt>Execution</dt>
+              <dd>{stepConfig.async ? 'Asynchronous' : 'Synchronous'}</dd>
+              <dt>Auto retry</dt>
+              <dd>{stepConfig.retryEnabled ? 'Enabled' : 'Disabled'}</dd>
+              <dt>Max attempts</dt>
+              <dd>{stepConfig.retryEnabled ? stepConfig.maxAttempts : '—'}</dd>
+              <dt>Retry delay</dt>
+              <dd>{stepConfig.retryEnabled ? formatDuration(stepConfig.delayMillis) : '—'}</dd>
+              <dt>Policy</dt>
+              <dd>{stepConfig.overridden ? 'Per-step override' : 'Workflow default'}</dd>
+              <dt>Retries used</dt>
+              <dd>
+                {retries}
+                {stepConfig.retryEnabled ? ` / ${stepConfig.maxAttempts}` : ''}
+              </dd>
+            </dl>
+          ) : (
+            <p className="muted-note">No configuration available for this step.</p>
+          ))}
 
         {tab === 'input' &&
           (context.loading ? (
@@ -97,7 +150,7 @@ export function StepDetailsPanel({ pipelineId, step, onClose, onReplayed }) {
           ) : logs.data?.length ? (
             <div className="logs">
               {logs.data.map((log) => (
-                <div className="log-row" key={log.id}>
+                <div className={`log-row ${log.action === 'RETRY' ? 'log-row-retry' : ''}`} key={log.id}>
                   <time>{new Date(log.dateCreated).toLocaleString()}</time>
                   <strong>{log.action}</strong>
                   <code>{log.snapshotJson}</code>
@@ -120,3 +173,4 @@ export function StepDetailsPanel({ pipelineId, step, onClose, onReplayed }) {
     </aside>
   );
 }
+

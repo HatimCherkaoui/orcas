@@ -114,25 +114,27 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
     @Override
     public List<WorkflowStepView> steps(String id) {
         return jdbc.query("""
-                        select pipeline_id, workflow, step_name, step_type_class_name, state,
+                        select pipeline_id, workflow, step_name, step_type_class_name, state, retry_count,
                                date_started, date_ended, date_updated
                           from workflow_step where pipeline_id=:id order by date_started nulls last, step_name
                         """, new MapSqlParameterSource().addValue("id", id),
                 (rs, n) -> new WorkflowStepView(rs.getString("pipeline_id"), rs.getString("workflow"),
                         rs.getString("step_name"), rs.getString("step_type_class_name"), rs.getString("state"),
+                        rs.getInt("retry_count"),
                         instant(rs, "date_started"), instant(rs, "date_ended"), instant(rs, "date_updated")));
     }
 
     @Override
     public WorkflowStepView step(String workflowId, String stepName) {
         return jdbc.queryForObject("""
-                        select pipeline_id, workflow, step_name, step_type_class_name, state,
+                        select pipeline_id, workflow, step_name, step_type_class_name, state, retry_count,
                                date_started, date_ended, date_updated
                           from workflow_step where pipeline_id=:id and step_name=:stepName
                         """, new MapSqlParameterSource().addValue("id",
                         workflowId).addValue("stepName", stepName),
                 (rs, n) -> new WorkflowStepView(rs.getString("pipeline_id"), rs.getString("workflow"),
                         rs.getString("step_name"), rs.getString("step_type_class_name"), rs.getString("state"),
+                        rs.getInt("retry_count"),
                         instant(rs, "date_started"), instant(rs, "date_ended"), instant(rs, "date_updated")));
 
     }
@@ -255,3 +257,4 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
         }
     }
 }
+

@@ -6,6 +6,8 @@ import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
 
+import java.util.Random;
+
 @Workflow("order-pipeline")
 public class OrderWorkflow {
     @WorkflowStep("extract-order")
@@ -17,6 +19,8 @@ public class OrderWorkflow {
     @WorkflowStep("join")
     public StepResult join(PipelineContext context) {
         context.metadata().put("join", "true");
+        var bool = context.metadata().get("timeout");
+        if (bool == null) context.metadata().put("timeout", "true");
         return StepResult.success(context);
     }
 
@@ -26,4 +30,6 @@ public class OrderWorkflow {
         execution.workflowContext().metadata().put("notified", "true");
         return StepResult.success(execution.workflowContext());
     }
+
+
 }

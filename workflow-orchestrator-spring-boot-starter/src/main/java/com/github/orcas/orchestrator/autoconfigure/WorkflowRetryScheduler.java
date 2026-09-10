@@ -1,6 +1,7 @@
 package com.github.orcas.orchestrator.autoconfigure;
 
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import com.github.orcas.orchestrator.core.engine.WorkflowStateStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -19,10 +20,22 @@ public final class WorkflowRetryScheduler implements DisposableBean {
     private static final Logger log = LoggerFactory.getLogger(WorkflowRetryScheduler.class);
 
     private final WorkflowEngine engine;
+    private final WorkflowStateStore stateStore;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
 
     public WorkflowRetryScheduler(WorkflowEngine engine) {
+        this(engine, null);
+    }
+
+    /**
+     * @param engine     engine used to actually perform the replay once the delay elapses
+     * @param stateStore optional state store used to record each scheduled replay as a
+     *                   retry attempt (for the dashboard's retry count/audit trail); may
+     *                   be {@code null} if retry tracking isn't available/desired
+     */
+    public WorkflowRetryScheduler(WorkflowEngine engine, WorkflowStateStore stateStore) {
         this.engine = engine;
+        this.stateStore = stateStore;
     }
 
     /**
@@ -34,6 +47,14 @@ public final class WorkflowRetryScheduler implements DisposableBean {
      */
     public void schedule(String workflowId, String stepName, Duration delay) {
         log.info("Scheduling replay of step '{}' for workflow instance {} in {}", stepName, workflowId, delay);
+        if (stateStore != null) {
+            try {
+                stateStore.recordRetry(workflowId, stepName, 0, "circuit breaker fallback replay scheduled");
+            } catch (RuntimeException e) {
+                log.warn("Unable to record circuit-breaker retry for step '{}' of workflow instance {}: {}",
+                        stepName, workflowId, e.getMessage());
+            }
+        }
         executor.schedule(() -> {
             try {
                 engine.replay(workflowId, stepName);
@@ -49,3 +70,4 @@ public final class WorkflowRetryScheduler implements DisposableBean {
         executor.shutdownNow();
     }
 }
+

@@ -21,8 +21,24 @@ public interface WorkflowStateStore {
 
     default void saveStepContext(StepContext context) { }
 
+    /**
+     * Records a single retry attempt for {@code stepName} of workflow instance
+     * {@code workflowId}: increments its persisted retry counter and appends a
+     * {@code RETRY} entry to the step's audit log, so the dashboard can show how
+     * many times a step has been retried and why. No-op by default so state stores
+     * that don't support retry tracking (e.g. in-memory/test implementations)
+     * don't need to implement it.
+     *
+     * @param workflowId workflow instance id
+     * @param stepName   name of the step being retried
+     * @param attempt    the 1-based delivery/replay attempt number, if known (0 if not applicable)
+     * @param reason     a short human-readable reason for the retry (e.g. the root error message)
+     */
+    default void recordRetry(String workflowId, String stepName, int attempt, String reason) { }
+
     void updateContext(String id, PipelineContext context);
 
     default void finish(StatusEvent event) {
     }
 }
+

@@ -1258,6 +1258,42 @@ button {
   color: #6955a5;
 }
 
+/* Compact retry counter badge shown on a step node when the engine has recorded
+   one or more automatic retries for that step. Hidden entirely at zero retries so
+   healthy graphs stay clean. */
+.rf-step-retries {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff7e6;
+  color: #9a6700;
+  border: 1px solid #f2d999;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.rf-step-retries svg {
+  flex-shrink: 0;
+}
+
+/* Retry entries in the step audit log get a subtle amber marker so operators can
+   spot repeated automatic replays at a glance among ordinary status transitions. */
+.log-row-retry {
+  border-left: 3px solid #f0b429;
+  padding-left: 9px;
+}
+
+.log-row-retry strong {
+  color: #9a6700;
+}
+
 .react-flow__edge.rf-edge-parallel .react-flow__edge-path {
   stroke: #7c3aed;
 }

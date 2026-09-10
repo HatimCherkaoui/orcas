@@ -17,6 +17,8 @@ public class WorkflowDefinitions implements WorkflowDefinitionProvider {
                 .and("customer-call")
                 .and("inventory-call")
                 .then("join").end()
+                .sequential().when(StatusCriteria.status("join", Status.SUCCESS))
+                .then("tofail")
                 .async().when(StatusCriteria.status("join", Status.SUCCESS))
                 .and("notify").end()
                 .build();

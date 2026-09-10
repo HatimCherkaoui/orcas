@@ -15,12 +15,16 @@ CREATE TABLE IF NOT EXISTS workflow_step (
     step_name VARCHAR(255) NOT NULL,
     step_type_class_name VARCHAR(1000),
     state VARCHAR(32) NOT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
     date_started TIMESTAMPTZ,
     date_ended TIMESTAMPTZ,
     date_updated TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (pipeline_id, step_name),
     CONSTRAINT fk_workflow_step_workflow FOREIGN KEY (pipeline_id) REFERENCES workflow(pipeline_id) ON DELETE CASCADE
 );
+-- Idempotent for databases created before retry tracking was added (CREATE TABLE
+-- IF NOT EXISTS above is a no-op once the table already exists).
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_workflow_step_state ON workflow_step(state);
 CREATE INDEX IF NOT EXISTS idx_workflow_step_name_state ON workflow_step(step_name, state);
 CREATE INDEX IF NOT EXISTS idx_workflow_step_pipeline ON workflow_step(pipeline_id);
@@ -112,3 +116,4 @@ CREATE TABLE IF NOT EXISTS workflow_step_context_log (
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_step_context_log_step
     ON workflow_step_context_log(pipeline_id, step_name, date_created);
+
