@@ -1,6 +1,7 @@
 package com.github.orcas.orchestrator.autoconfigure.step;
 
 import com.github.orcas.orchestrator.core.annotation.Workflow;
+import com.github.orcas.orchestrator.core.annotation.WorkflowStep;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
@@ -12,17 +13,11 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 
-/**
- * Bean-definition-registry post-processor that scans the application's base packages
- * for classes annotated with {@code @Workflow} extending {@code WorkflowStep}, and
- * registers them as Spring beans so they participate in dependency injection and are
- * picked up by {@link workflowMethodStepScanner}/{@code StepCatalog}.
- */
-public final class WorkflowClassRegistrar implements BeanDefinitionRegistryPostProcessor, EnvironmentAware {
+public class WorkflowStepClassRegistrar implements BeanDefinitionRegistryPostProcessor, EnvironmentAware {
     private final BeanFactory beanFactory;
     private Environment environment;
 
-    public WorkflowClassRegistrar(BeanFactory beanFactory) {
+    public WorkflowStepClassRegistrar(BeanFactory beanFactory) {
         this.beanFactory = beanFactory;
     }
 
@@ -40,14 +35,14 @@ public final class WorkflowClassRegistrar implements BeanDefinitionRegistryPostP
                 return bd.getMetadata().isIndependent();
             }
         };
-        scanner.addIncludeFilter(new AnnotationTypeFilter(Workflow.class));
+        scanner.addIncludeFilter(new AnnotationTypeFilter(WorkflowStep.class));
         for (String base : AutoConfigurationPackages.get(beanFactory))
             for (var candidate : scanner.findCandidateComponents(base)) {
                 String className = candidate.getBeanClassName();
                 try {
                     Class<?> type = Class.forName(className);
                     if (type.isInterface() || java.lang.reflect.Modifier.isAbstract(type.getModifiers())) continue;
-                    String name = "workflow_" + type.getAnnotation(Workflow.class).value().replaceAll("[^A-Za-z0-9_]", "_");
+                    String name = "workflowStep_" + type.getAnnotation(WorkflowStep.class).value().replaceAll("[^A-Za-z0-9_]", "_");
                     if (!registry.containsBeanDefinition(name)) {
                         var bd = BeanDefinitionBuilder.genericBeanDefinition(type).getBeanDefinition();
                         bd.setAutowireMode(org.springframework.beans.factory.config.AutowireCapableBeanFactory.AUTOWIRE_CONSTRUCTOR);

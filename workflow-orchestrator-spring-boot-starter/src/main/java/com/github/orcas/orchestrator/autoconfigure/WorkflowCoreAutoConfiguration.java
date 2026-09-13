@@ -1,5 +1,6 @@
 package com.github.orcas.orchestrator.autoconfigure;
 
+import com.github.orcas.orchestrator.autoconfigure.step.WorkflowStepClassRegistrar;
 import com.github.orcas.orchestrator.core.api.WorkflowStep;
 import com.github.orcas.orchestrator.core.builder.StepCatalog;
 import com.github.orcas.orchestrator.core.builder.WorkflowDefinitionProvider;
@@ -7,8 +8,7 @@ import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
 import com.github.orcas.orchestrator.core.engine.WorkflowStateStore;
 import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
-import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
-import com.github.orcas.orchestrator.autoconfigure.step.WorkflowMethodStepScanner;
+import com.github.orcas.orchestrator.autoconfigure.step.workflowMethodStepScanner;
 import com.github.orcas.orchestrator.autoconfigure.step.WorkflowClassRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,14 +42,17 @@ public class WorkflowCoreAutoConfiguration {
     static WorkflowClassRegistrar workflowClassRegistrar(org.springframework.beans.factory.BeanFactory beanFactory) { return new WorkflowClassRegistrar(beanFactory); }
 
     @Bean
-    @ConditionalOnMissingBean(WorkflowMethodStepScanner.class)
-    WorkflowMethodStepScanner workflowMethodStepScanner(org.springframework.beans.factory.ListableBeanFactory beanFactory) {
-        return new WorkflowMethodStepScanner(beanFactory);
+    static WorkflowStepClassRegistrar workflowStepClassRegistrar(org.springframework.beans.factory.BeanFactory beanFactory) { return new WorkflowStepClassRegistrar(beanFactory); }
+
+    @Bean
+    @ConditionalOnMissingBean(workflowMethodStepScanner.class)
+    workflowMethodStepScanner workflowMethodStepScanner(org.springframework.beans.factory.ListableBeanFactory beanFactory) {
+        return new workflowMethodStepScanner(beanFactory);
     }
 
     @Bean
     @ConditionalOnMissingBean(StepCatalog.class)
-    StepCatalog stepCatalog(ObjectProvider<WorkflowStep> steps, WorkflowMethodStepScanner methodScanner) {
+    StepCatalog stepCatalog(ObjectProvider<WorkflowStep> steps, workflowMethodStepScanner methodScanner) {
         var catalog = new StepCatalog(steps.orderedStream().toList(), methodScanner.discover());
         log.debug("Built workflow step catalog");
         return catalog;

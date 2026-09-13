@@ -7,9 +7,8 @@ export function Footer() {
   return (
     <footer className="sidebar-footer">
       <a href={REPO_URL} target="_blank" rel="noreferrer" className="brand-link">
-        Orcas
+        Orcas {year}
       </a>
-      <span>&copy; {year}</span>
     </footer>
   );
 }

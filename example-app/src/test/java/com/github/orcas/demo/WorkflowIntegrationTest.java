@@ -254,7 +254,7 @@ class WorkflowIntegrationTest {
             assertTrue(steps.size() >= 4);
         });
         await().atMost(Duration.ofSeconds(60)).pollDelay(Duration.ofMillis(10)).ignoreExceptions().untilAsserted(() -> {
-            var step = workflowQueryService.step(pipelineId, "notify");
+            var step = workflowQueryService.step(pipelineId, "tofail");
             System.out.println("state: " + step);
             assertTrue(step.state().equals("SUCCESS"));
         });

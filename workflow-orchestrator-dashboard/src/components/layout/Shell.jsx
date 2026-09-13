@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Boxes, ChevronLeft, ChevronRight, Waves } from 'lucide-react';
 import { Footer } from './Footer';
+import logoUrl from '../../assets/logo.svg';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Pipelines', icon: Boxes },
@@ -21,9 +22,7 @@ export function Shell({ page, navigate, children }) {
     <div className="shell">
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-head">
-          <button className="brand-mark" onClick={() => navigate('/')} aria-label="Orcas home">
-            {collapsed ? 'O' : 'ORCAS'}
-          </button>
+          <img src={logoUrl} alt="Brand Logo" className="brand-mark" />
           <button
             className="sidebar-collapse"
             onClick={() => setCollapsed((value) => !value)}

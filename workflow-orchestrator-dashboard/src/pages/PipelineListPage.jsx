@@ -19,7 +19,7 @@ const DEFAULT_FILTERS = {
   createdFrom: '',
   createdTo: '',
   page: 0,
-  size: 20,
+  size: 8,
 };
 
 /** Converts a `YYYY-MM-DD` date input value into an ISO instant, at the start or end of that day. */

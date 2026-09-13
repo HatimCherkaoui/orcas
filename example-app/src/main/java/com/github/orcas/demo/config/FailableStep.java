@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 import java.util.Random;
 import java.util.concurrent.TimeoutException;
 
-@Component
 @WorkflowStep(value = "tofail", async = true)
 public class FailableStep extends Step {
 

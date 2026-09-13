@@ -17,10 +17,10 @@ import java.util.List;
  * when {@code async() == true}), so plain {@code @Component} methods can act as
  * workflow steps without implementing {@code Step}/{@code AsyncStep} directly.
  */
-public final class WorkflowMethodStepScanner {
+public final class workflowMethodStepScanner {
     private final ListableBeanFactory beanFactory;
 
-    public WorkflowMethodStepScanner(ListableBeanFactory beanFactory) { this.beanFactory = beanFactory; }
+    public workflowMethodStepScanner(ListableBeanFactory beanFactory) { this.beanFactory = beanFactory; }
 
     public List<com.github.orcas.orchestrator.core.api.WorkflowStep> discover() {
         var result = new ArrayList<com.github.orcas.orchestrator.core.api.WorkflowStep>();
