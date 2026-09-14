@@ -53,6 +53,13 @@ class WorkflowIntegrationTest {
                     .withExposedPorts(8080)
                     .waitingFor(Wait.forHttp("/__admin/").forStatusCode(200));
 
+    @Container
+    static final GenericContainer<?> ELASTIC =
+            new GenericContainer<>(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.10.0"))
+                    .withExposedPorts(9200)
+                    .waitingFor(Wait.forHttp("/").forStatusCode(200));
+
+
     @LocalServerPort
     int port;
 

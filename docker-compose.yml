@@ -17,6 +17,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+    networks:
+      - observability-net
 
   kafka:
     image: apache/kafka:4.3.1
@@ -45,6 +47,8 @@ services:
       timeout: 10s
       retries: 20
       start_period: 15s
+    networks:
+      - observability-net
 
   wiremock:
     image: wiremock/wiremock:3.13.2
@@ -55,6 +59,139 @@ services:
       - ./wiremock:/home/wiremock:ro
     ports:
       - "8089:8080"
+    networks:
+      - observability-net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=adminpassword
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - observability-net
+
+  # 1. Set kibana_system password BEFORE Kibana starts
+  es-setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: es-setup
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - observability-net
+    command: >
+      bash -c "
+        until curl -s -u elastic:adminpassword -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -H 'Content-Type: application/json' -d '{\"password\":\"adminpassword\"}' | grep -q '{}'; do
+          echo 'Waiting to set kibana_system password...'
+          sleep 3
+        done;
+        echo 'Creating OTel Data Stream Template...'
+        curl -s -u elastic:adminpassword -X PUT http://elasticsearch:9200/_index_template/otel_data_streams -H 'Content-Type: application/json' -d '{\"index_patterns\":[\"traces-*\",\"logs-*\",\"metrics-*\"],\"data_stream\":{}}'
+        echo 'es-setup completed successfully.'
+      "
+  # 2. Kibana starts only after es-setup completes
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=adminpassword
+      - XPACK_FLEET_ISOUTOFTHEBOXENABLED=false
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - observability-net
+
+  # 3. Pre-configure Spaces and Data Views in Kibana
+  kibana-init:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: kibana-init
+    depends_on:
+      kibana:
+        condition: service_healthy
+    networks:
+      - observability-net
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "--> 1. Creating Data Views in Default Space..."
+        curl -s -X POST "http://kibana:5601/api/data_views/data_view" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "data_view": {
+              "title": "traces-*,logs-*,metrics-*",
+              "name": "orchestrator",
+              "timeFieldName": "@timestamp"
+            }
+          }'
+
+        echo "--> 2. Creating Custom Space: Spring Boot Example App..."
+        curl -s -X POST "http://kibana:5601/api/spaces/space" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "id": "springboot-example-app",
+            "name": "Spring Boot Example App",
+            "description": "Observability space for OTLP traces, logs, and metrics",
+            "color": "#00BFB3"
+          }'
+
+        echo "--> 3. Creating Data Views in custom Space..."
+        curl -s -X POST "http://kibana:5601/s/springboot-example-app/api/data_views/data_view" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "data_view": {
+              "title": "traces-*,logs-*,metrics-*",
+              "name": "orchestrator",
+              "timeFieldName": "@timestamp"
+            }
+          }'
+
+        echo "--> Kibana auto-configuration completed!"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - observability-net
+
   example-app:
     build:
       context: .
@@ -68,8 +205,13 @@ services:
         condition: service_healthy
       wiremock:
         condition: service_started
+      elasticsearch:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     environment:
       SERVER_PORT: 8080
+      SPRING_APPLICATION_NAME: workflow-example-app
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orchestrator
       SPRING_DATASOURCE_USERNAME: orchestrator
       SPRING_DATASOURCE_PASSWORD: orchestrator
@@ -84,8 +226,12 @@ services:
       DEMO_CUSTOMER_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
       JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      LOG_FORMAT: ecs
     ports:
       - "8080:8080"
+    networks:
+      - observability-net
 
   dashboard:
     build:
@@ -97,7 +243,13 @@ services:
       - example-app
     ports:
       - "5173:80"
+    networks:
+      - observability-net
 
 volumes:
   postgres_data:
   kafka_data:
+
+networks:
+  observability-net:
+    driver: bridge
