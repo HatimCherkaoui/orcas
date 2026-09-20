@@ -1,4 +1,14 @@
 {
-  "request": {"method":"GET","urlPathPattern":"/inventory/.*"},
-  "response": {"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"inventory","status":"OK"}}
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/inventory/.*"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 1000,
+    "jsonBody": {
+      "source": "inventory",
+      "status": "OK"
+    }
+  }
 }

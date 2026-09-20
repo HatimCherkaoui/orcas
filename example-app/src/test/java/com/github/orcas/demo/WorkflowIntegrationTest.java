@@ -53,12 +53,6 @@ class WorkflowIntegrationTest {
                     .withExposedPorts(8080)
                     .waitingFor(Wait.forHttp("/__admin/").forStatusCode(200));
 
-    @Container
-    static final GenericContainer<?> ELASTIC =
-            new GenericContainer<>(DockerImageName.parse("docker.elastic.co/elasticsearch/elasticsearch:8.10.0"))
-                    .withExposedPorts(9200)
-                    .waitingFor(Wait.forHttp("/").forStatusCode(200));
-
 
     @LocalServerPort
     int port;
@@ -77,6 +71,10 @@ class WorkflowIntegrationTest {
         r.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         r.add("demo.customer.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.inventory.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
+        r.add("demo.veryinstableapi.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
+        r.add("demo.tofail.force-timeout", () -> "false");
+        r.add("management.otlp.tracing.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/traces");
+        r.add("management.otlp.logs.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/logs");
     }
 
     @BeforeAll
@@ -93,8 +91,17 @@ class WorkflowIntegrationTest {
         String inventory = """
                 {"request":{"method":"GET","urlPathPattern":"/inventory/.*"},"response":{"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"inventory","status":"OK"}}}
                 """;
+        String veryInstableApi = """
+                {"request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"veryinstableapi","status":"OK"}}}
+                """;
+        String otlpTraces = """
+                {"request":{"method":"POST","urlPath":"/v1/traces"},"response":{"status":200}}
+                """;
+        String otlpLogs = """
+                {"request":{"method":"POST","urlPath":"/v1/logs"},"response":{"status":200}}
+                """;
         HttpClient client = HttpClient.newHttpClient();
-        for (String mapping : new String[]{customer, inventory}) {
+        for (String mapping : new String[]{customer, inventory, veryInstableApi, otlpTraces, otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(base + "/__admin/mappings"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapping))
@@ -206,6 +213,27 @@ class WorkflowIntegrationTest {
                 .statusCode(200)
                 .body("size()", greaterThan(0));
 
+        given()
+                .port(port)
+                .when()
+                .get("/api/orchestrator/workflows/definitions/order-pipeline")
+                .then()
+                .statusCode(200)
+                .body("stepConfigs['veryinstableapi-call'].circuitBreakerEnabled", equalTo(true))
+                .body("stepConfigs['veryinstableapi-call'].circuitBreakerName", equalTo("veryinstableapi-call"))
+                .body("stepConfigs['veryinstableapi-call'].circuitBreakerFallback", equalTo("REPLAY"));
+
+        await().atMost(Duration.ofSeconds(10)).ignoreExceptions().untilAsserted(() ->
+                given()
+                        .port(port)
+                        .when()
+                        .get("/api/orchestrator/workflows/" + pipelineId + "/steps/veryinstableapi-call")
+                        .then()
+                        .statusCode(200)
+                        .body("step.stepName", equalTo("veryinstableapi-call"))
+                        .body("stepConfig.circuitBreakerEnabled", equalTo(true))
+                        .body("stepConfig.circuitBreakerName", equalTo("veryinstableapi-call")));
+
         // The async 'notify' step can still be finishing its own terminal-state
         // transition even after the main chain already flipped the workflow to
         // SUCCESS; wait for it to settle so it can't race with (and overwrite)
@@ -260,8 +288,8 @@ class WorkflowIntegrationTest {
             System.out.println(steps);
             assertTrue(steps.size() >= 4);
         });
-        await().atMost(Duration.ofSeconds(60)).pollDelay(Duration.ofMillis(10)).ignoreExceptions().untilAsserted(() -> {
-            var step = workflowQueryService.step(pipelineId, "tofail");
+        await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500)).pollDelay(Duration.ofMillis(10)).ignoreExceptions().untilAsserted(() -> {
+            var step = workflowQueryService.step(pipelineId, "veryinstableapi-call");
             System.out.println("state: " + step);
             assertTrue(step.state().equals("SUCCESS"));
         });
@@ -281,11 +309,12 @@ class WorkflowIntegrationTest {
      */
     private String awaitNewSuccessfulPipeline(java.util.Set<String> before) {
         java.util.concurrent.atomic.AtomicReference<String> found = new java.util.concurrent.atomic.AtomicReference<>();
-        await().atMost(Duration.ofSeconds(30)).ignoreExceptions().untilAsserted(() -> {
+        await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500)).ignoreExceptions().untilAsserted(() -> {
             java.util.List<String> ids = jdbc.queryForList(
                     "select pipeline_id from workflow where workflow='order-pipeline' and status='SUCCESS' order by date_created desc",
                     String.class);
             String next = ids.stream().filter(id -> !before.contains(id)).findFirst().orElse(null);
+            System.out.println("Waiting for new successful pipeline. Found: " + ids.size() + ", New: " + (next != null ? "yes" : "no"));
             assertTrue(next != null, "expected a new successful order-pipeline instance");
             found.set(next);
         });

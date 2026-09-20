@@ -1,17 +1,31 @@
 package com.github.orcas.orchestrator.service;
 
+import com.github.orcas.orchestrator.autoconfigure.WorkflowCircuitBreakerProperties;
 import com.github.orcas.orchestrator.service.api.WorkflowAdminService;
 import com.github.orcas.orchestrator.service.api.WorkflowQueryService;
 import com.github.orcas.orchestrator.service.api.WorkflowQueryService.*;
 import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryProperties;
+import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryScheduler;
+import com.github.orcas.orchestrator.autoconfigure.rest.AsyncRestClientWorkflowStep;
+import com.github.orcas.orchestrator.autoconfigure.rest.RestClientWorkflowStep;
+import com.github.orcas.orchestrator.core.annotation.WorkflowCircuitBreaker;
 import com.github.orcas.orchestrator.core.api.AsyncStep;
+import com.github.orcas.orchestrator.core.api.MethodAsyncWorkflowStep;
+import com.github.orcas.orchestrator.core.api.MethodWorkflowStep;
+import com.github.orcas.orchestrator.core.api.WorkflowStep;
 import com.github.orcas.orchestrator.core.builder.WorkflowDefinition;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -33,13 +47,23 @@ public final class WorkflowServiceController {
     private final WorkflowAdminService admin;
     private final WorkflowRegistry registry;
     private final WorkflowRetryProperties retryProperties;
+    private final WorkflowCircuitBreakerProperties circuitBreakerProperties;
+    private final ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider;
+    private final ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider;
 
     public WorkflowServiceController(WorkflowQueryService query, WorkflowAdminService admin,
-                                     WorkflowRegistry registry, WorkflowRetryProperties retryProperties) {
+                                     WorkflowRegistry registry,
+                                     WorkflowRetryProperties retryProperties,
+                                     WorkflowCircuitBreakerProperties circuitBreakerProperties,
+                                     ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider,
+                                     ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider) {
         this.query = query;
         this.admin = admin;
         this.registry = registry;
         this.retryProperties = retryProperties;
+        this.circuitBreakerProperties = circuitBreakerProperties;
+        this.circuitBreakerRegistryProvider = circuitBreakerRegistryProvider;
+        this.retrySchedulerProvider = retrySchedulerProvider;
     }
 
     @GetMapping
@@ -68,12 +92,34 @@ public final class WorkflowServiceController {
     public ResponseEntity<WorkflowGraph> definition(@PathVariable("workflow") String workflow) {
         var definition = registry.get(workflow);
         if (definition == null) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(WorkflowGraph.from(definition, retryProperties));
+        return ResponseEntity.ok(WorkflowGraph.from(definition, retryProperties, circuitBreakerProperties));
     }
 
     @GetMapping("/{id}/steps")
     public java.util.List<WorkflowStepView> steps(@PathVariable("id") String id) {
         return query.steps(id);
+    }
+
+    @GetMapping("/{id}/steps/{stepName}")
+    public ResponseEntity<WorkflowStepDetailsView> step(@PathVariable("id") String id,
+                                                        @PathVariable("stepName") String stepName) {
+        final WorkflowStepView persisted;
+        try {
+            persisted = query.step(id, stepName);
+        } catch (EmptyResultDataAccessException ex) {
+            return ResponseEntity.notFound().build();
+        }
+
+        WorkflowDefinition definition = registry.get(persisted.workflow());
+        WorkflowStep workflowStep = definition == null ? null : definition.findStep(stepName);
+        StepConfig stepConfig = workflowStep == null ? null : StepConfig.from(workflowStep, retryProperties, circuitBreakerProperties);
+        String circuitBreakerState = stepConfig == null ? null : stepConfig.circuitBreakerName() == null
+                ? null
+                : resolveCircuitBreakerState(stepConfig.circuitBreakerName());
+        ScheduledRetryView scheduledRetry = stepConfig == null || stepConfig.circuitBreakerName() == null
+                ? null
+                : resolveScheduledRetry(stepConfig.circuitBreakerName(), stepName);
+        return ResponseEntity.ok(new WorkflowStepDetailsView(persisted, stepConfig, circuitBreakerState, scheduledRetry));
     }
 
     @GetMapping("/{id}/steps/{stepName}/context")
@@ -152,6 +198,18 @@ public final class WorkflowServiceController {
         admin.replaceMetadata(id, body);
         return ResponseEntity.noContent().build();
     }
+
+    private String resolveCircuitBreakerState(String breakerName) {
+        CircuitBreakerRegistry circuitBreakerRegistry = circuitBreakerRegistryProvider.getIfAvailable();
+        return circuitBreakerRegistry == null ? null : circuitBreakerRegistry.circuitBreaker(breakerName).getState().name();
+    }
+
+    private ScheduledRetryView resolveScheduledRetry(String breakerName, String stepName) {
+        WorkflowRetryScheduler scheduler = retrySchedulerProvider.getIfAvailable();
+        return scheduler == null ? null : scheduler.scheduledHalfOpenReplay(breakerName, stepName)
+                .map(ScheduledRetryView::from)
+                .orElse(null);
+    }
 }
 
 /**
@@ -161,12 +219,12 @@ public final class WorkflowServiceController {
  * {@code stepConfigs} in the step details "Configuration" tab.
  */
 record WorkflowGraph(String workflow, java.util.List<RouteGraph> routes, Map<String, StepConfig> stepConfigs) {
-    static WorkflowGraph from(WorkflowDefinition d, WorkflowRetryProperties retry) {
+    static WorkflowGraph from(WorkflowDefinition d, WorkflowRetryProperties retry, WorkflowCircuitBreakerProperties circuitBreakerProperties) {
         Map<String, StepConfig> configs = new LinkedHashMap<>();
         for (WorkflowDefinition.Route route : d.routes()) {
-            route.steps().forEach(step -> configs.putIfAbsent(step.name(), StepConfig.from(step, retry)));
+            route.steps().forEach(step -> configs.putIfAbsent(step.name(), StepConfig.from(step, retry, circuitBreakerProperties)));
             if (route.joinStep() != null) {
-                configs.putIfAbsent(route.joinStep().name(), StepConfig.from(route.joinStep(), retry));
+                configs.putIfAbsent(route.joinStep().name(), StepConfig.from(route.joinStep(), retry, circuitBreakerProperties));
             }
         }
         return new WorkflowGraph(d.name(), d.routes().stream().map(RouteGraph::from).toList(), configs);
@@ -185,17 +243,50 @@ record WorkflowGraph(String workflow, java.util.List<RouteGraph> routes, Map<Str
  * @param maxAttempts effective maximum number of attempts before the workflow suspends
  * @param delayMillis effective delay between attempts, in milliseconds
  * @param overridden  {@code true} when a per-step retry override is configured for this step
+ * @param circuitBreakerEnabled {@code true} when the step is annotated/configured with a circuit breaker
+ * @param circuitBreakerName effective circuit breaker name, when configured
+ * @param circuitBreakerFallback effective fallback strategy for OPEN breaker state
+ * @param circuitBreakerWaitOpenMillis effective OPEN wait duration, in milliseconds
+ * @param circuitBreakerPermittedHalfOpenCalls effective half-open probe batch size
  */
 record StepConfig(String stepName, boolean async, boolean retryEnabled,
-                  int maxAttempts, long delayMillis, boolean overridden) {
-    static StepConfig from(com.github.orcas.orchestrator.core.api.WorkflowStep step, WorkflowRetryProperties retry) {
+                  int maxAttempts, long delayMillis, boolean overridden,
+                  boolean circuitBreakerEnabled, String circuitBreakerName, String circuitBreakerFallback,
+                  Long circuitBreakerWaitOpenMillis, Integer circuitBreakerPermittedHalfOpenCalls) {
+    static StepConfig from(com.github.orcas.orchestrator.core.api.WorkflowStep step,
+                           WorkflowRetryProperties retry,
+                           WorkflowCircuitBreakerProperties circuitBreakerProperties) {
         var override = retry.getSteps().get(step.name());
         int attempts = override != null && override.getMaxAttempts() != null
                 ? override.getMaxAttempts() : retry.getMaxAttempts();
         var delay = override != null && override.getDelay() != null
                 ? override.getDelay() : retry.getDelay();
+        CircuitBreakerStepMetadata circuitBreaker = StepMetadataSupport.circuitBreaker(step, circuitBreakerProperties);
         return new StepConfig(step.name(), step instanceof AsyncStep, retry.isEnabled(),
-                attempts, delay == null ? 0L : delay.toMillis(), override != null);
+                attempts, delay == null ? 0L : delay.toMillis(), override != null,
+                circuitBreaker != null, circuitBreaker == null ? null : circuitBreaker.name(),
+                circuitBreaker == null ? null : circuitBreaker.fallback(),
+                circuitBreaker == null ? null : circuitBreaker.waitOpenMillis(),
+                circuitBreaker == null ? null : circuitBreaker.permittedHalfOpenCalls());
+    }
+}
+
+record WorkflowStepDetailsView(WorkflowStepView step, StepConfig stepConfig,
+                               String circuitBreakerState, ScheduledRetryView scheduledRetry) {
+}
+
+record ScheduledRetryView(String type, String reason, String breakerName, String stepName,
+                          Instant scheduledAt, long remainingMillis, int batchSize) {
+    static ScheduledRetryView from(WorkflowRetryScheduler.ScheduledHalfOpenReplay scheduled) {
+        long remainingMillis = Math.max(0, scheduled.scheduledAt().toEpochMilli() - Instant.now().toEpochMilli());
+        return new ScheduledRetryView(
+                "HALF_OPEN_REPLAY",
+                scheduled.reason(),
+                scheduled.breakerName(),
+                scheduled.stepName(),
+                scheduled.scheduledAt(),
+                remainingMillis,
+                scheduled.permittedCalls());
     }
 }
 
@@ -205,6 +296,80 @@ record RouteGraph(String triggerStep, String triggerStatus, String mode, java.ut
         String status = r.criteria().expectedStatus().name();
         String mode = r.joinStep() != null ? "PARALLEL" : r.steps().stream().anyMatch(s -> s instanceof AsyncStep) ? "ASYNC" : "SEQUENTIAL";
         return new RouteGraph(trigger, status, mode, r.steps().stream().map(com.github.orcas.orchestrator.core.api.WorkflowStep::name).toList(), r.joinStep() == null ? null : r.joinStep().name());
+    }
+}
+
+record CircuitBreakerStepMetadata(String name, String fallback, Long waitOpenMillis, Integer permittedHalfOpenCalls) {
+}
+
+final class StepMetadataSupport {
+    private StepMetadataSupport() {
+    }
+
+    static CircuitBreakerStepMetadata circuitBreaker(WorkflowStep step,
+                                                     WorkflowCircuitBreakerProperties properties) {
+        WorkflowCircuitBreaker annotation = annotation(step);
+        if (annotation == null) {
+            return null;
+        }
+        WorkflowCircuitBreakerProperties.Instance instance = properties.getInstances().get(annotation.name());
+        var wait = instance != null && instance.getWaitDurationInOpenState() != null
+                ? instance.getWaitDurationInOpenState()
+                : properties.getWaitDurationInOpenState();
+        Integer permittedHalfOpenCalls = instance != null && instance.getPermittedNumberOfCallsInHalfOpenState() != null
+                ? instance.getPermittedNumberOfCallsInHalfOpenState()
+                : properties.getPermittedNumberOfCallsInHalfOpenState();
+        return new CircuitBreakerStepMetadata(
+                annotation.name(),
+                annotation.fallback().name(),
+                wait == null ? null : wait.toMillis(),
+                permittedHalfOpenCalls);
+    }
+
+    private static WorkflowCircuitBreaker annotation(WorkflowStep step) {
+        if (step == null) {
+            return null;
+        }
+        if (step instanceof AsyncRestClientWorkflowStep asyncRestStep) {
+            Object delegate = readField(asyncRestStep, "delegate");
+            return delegate instanceof WorkflowStep workflowStep ? annotation(workflowStep) : null;
+        }
+        if (step instanceof RestClientWorkflowStep restClientWorkflowStep) {
+            return (WorkflowCircuitBreaker) readField(restClientWorkflowStep, "circuitBreaker");
+        }
+        if (step instanceof MethodWorkflowStep methodWorkflowStep) {
+            return methodAnnotation(methodWorkflowStep);
+        }
+        if (step instanceof MethodAsyncWorkflowStep methodAsyncWorkflowStep) {
+            return methodAnnotation(methodAsyncWorkflowStep);
+        }
+        return AnnotatedElementUtils.findMergedAnnotation(step.getClass(), WorkflowCircuitBreaker.class);
+    }
+
+    private static WorkflowCircuitBreaker methodAnnotation(Object methodStep) {
+        Method method = (Method) readField(methodStep, "method");
+        Object target = readField(methodStep, "target");
+        WorkflowCircuitBreaker annotation = method == null ? null
+                : AnnotatedElementUtils.findMergedAnnotation(method, WorkflowCircuitBreaker.class);
+        return annotation != null || target == null
+                ? annotation
+                : AnnotatedElementUtils.findMergedAnnotation(target.getClass(), WorkflowCircuitBreaker.class);
+    }
+
+    private static Object readField(Object target, String name) {
+        Class<?> type = target.getClass();
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(name);
+                field.trySetAccessible();
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException("Unable to inspect workflow step metadata", e);
+            }
+        }
+        return null;
     }
 }
 

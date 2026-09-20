@@ -45,6 +45,7 @@ function makeEdge(source, target, mode, key, triggerStatus) {
  */
 export function buildGraph(steps, definition) {
   const stepByName = new Map((steps || []).map((step) => [step.stepName, step]));
+  const stepConfigs = definition?.stepConfigs || {};
   const stepOrFallback = (name) => stepByName.get(name) || { stepName: name, state: 'PENDING' };
   const routes = definition?.routes || [];
 
@@ -55,7 +56,12 @@ export function buildGraph(steps, definition) {
   const addNode = (name) => {
     if (seen.has(name)) return;
     seen.add(name);
-    nodes.push({ id: name, type: 'stepNode', data: { step: stepOrFallback(name) }, position: { x: 0, y: 0 } });
+    nodes.push({
+      id: name,
+      type: 'stepNode',
+      data: { step: stepOrFallback(name), stepConfig: stepConfigs[name] || null },
+      position: { x: 0, y: 0 },
+    });
   };
 
   if (routes.length === 0) {

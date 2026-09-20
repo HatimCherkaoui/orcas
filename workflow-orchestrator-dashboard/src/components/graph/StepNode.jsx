@@ -33,6 +33,7 @@ export function StepNode({ data, selected }) {
   // Number of automatic retries recorded for this step by the engine. Only shown
   // when non-zero so healthy steps stay visually clean.
   const retries = Number(data.step.retryCount) || 0;
+  const hasCircuitBreaker = Boolean(data.stepConfig?.circuitBreakerEnabled);
 
   return (
     <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''}`}>
@@ -41,7 +42,18 @@ export function StepNode({ data, selected }) {
         <Icon size={15} />
       </div>
       <div className="rf-step-body">
-        <strong>{data.step.stepName}</strong>
+        <div className="rf-step-title-row">
+          <strong>{data.step.stepName}</strong>
+          {hasCircuitBreaker && (
+            <span
+              className="rf-step-circuit-badge"
+              title={`Circuit breaker: ${data.stepConfig?.circuitBreakerName || 'configured'}`}
+              aria-label="Circuit breaker enabled"
+            >
+              c
+            </span>
+          )}
+        </div>
         <span className="rf-step-state">{state.replace(/_/g, ' ')}</span>
       </div>
       {retries > 0 && (

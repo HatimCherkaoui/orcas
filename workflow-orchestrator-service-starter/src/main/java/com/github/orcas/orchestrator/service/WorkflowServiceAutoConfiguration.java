@@ -1,14 +1,18 @@
 package com.github.orcas.orchestrator.service;
 
+import com.github.orcas.orchestrator.autoconfigure.WorkflowCircuitBreakerProperties;
 import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryProperties;
+import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryScheduler;
 import com.github.orcas.orchestrator.service.api.KafkaService;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
 import com.github.orcas.orchestrator.service.api.WorkflowAdminService;
 import com.github.orcas.orchestrator.service.api.WorkflowQueryService;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import com.github.orcas.orchestrator.service.jdbc.JdbcWorkflowAdminService;
 import com.github.orcas.orchestrator.service.jdbc.JdbcWorkflowQueryService;
 import com.github.orcas.orchestrator.service.kafka.DefaultKafkaService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -61,8 +65,12 @@ public class WorkflowServiceAutoConfiguration {
     WorkflowServiceController workflowServiceController(
             WorkflowQueryService query,
             WorkflowAdminService admin, WorkflowRegistry registry,
-            WorkflowRetryProperties retryProperties) {
-        return new WorkflowServiceController(query, admin, registry, retryProperties);
+            WorkflowRetryProperties retryProperties,
+            WorkflowCircuitBreakerProperties circuitBreakerProperties,
+            ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider,
+            ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider) {
+        return new WorkflowServiceController(query, admin, registry, retryProperties,
+                circuitBreakerProperties, circuitBreakerRegistryProvider, retrySchedulerProvider);
     }
 
     @Bean

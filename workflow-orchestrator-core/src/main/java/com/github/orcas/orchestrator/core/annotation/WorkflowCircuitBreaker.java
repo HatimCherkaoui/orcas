@@ -1,7 +1,6 @@
 package com.github.orcas.orchestrator.core.annotation;
 
 import java.lang.annotation.*;
-import java.time.Duration;
 
 /**
  * Wraps a workflow step method (or all step methods of a class) with a
@@ -21,7 +20,7 @@ public @interface WorkflowCircuitBreaker {
     String name() default "default";
 
     /** Either {@code "REPLAY"} (auto-schedule a replay) or {@code "SUSPEND"} (default). */
-    String fallback() default "SUSPEND";
+    FallbackStrategy fallback() default FallbackStrategy.SUSPEND;;
 
     /** Delay, in seconds, before an automatic replay is attempted when {@code fallback = "REPLAY"}. */
     long retryDelaySeconds() default 30;

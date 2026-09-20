@@ -88,9 +88,10 @@ public class WorkflowKafkaRetryConfiguration {
     private void suspend(ConsumerRecord<?, ?> record, Exception exception, WorkflowEventPublisher publisher, ObjectMapper mapper) {
         try {
             StatusEvent event = mapper.readValue(String.valueOf(record.value()), StatusEvent.class);
+            String step = failingStep(exception, event.step());
             log.warn("Exhausted retries for workflow instance {} step '{}'; suspending: {}",
-                    event.workflowId(), event.step(), rootMessage(exception));
-            publisher.publish(StatusEvent.of(event.workflowId(), event.workflow(), event.step(), Status.SUSPENDED,
+                    event.workflowId(), step, rootMessage(exception));
+            publisher.publish(StatusEvent.of(event.workflowId(), event.workflow(), step, Status.SUSPENDED,
                     event.metadata(), "automatic replay exhausted: " + rootMessage(exception)));
         } catch (Exception ignored) {
         }

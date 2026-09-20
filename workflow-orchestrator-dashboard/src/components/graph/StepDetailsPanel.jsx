@@ -28,6 +28,10 @@ function formatDuration(millis) {
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
+function formatDateTime(value) {
+  return value ? new Date(value).toLocaleString() : '—';
+}
+
 /**
  * Floating card shown alongside the graph when a step node is selected. Loads the
  * step's context/attributes and audit logs on demand and lets operators replay
@@ -42,10 +46,14 @@ export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onRepl
   const [tab, setTab] = useState('overview');
   const [replaying, setReplaying] = useState(false);
 
+  const details = useLoad(() => api.step(pipelineId, step.stepName), [pipelineId, step.stepName]);
   const context = useLoad(() => api.stepContext(pipelineId, step.stepName), [pipelineId, step.stepName]);
   const logs = useLoad(() => api.stepLogs(pipelineId, step.stepName), [pipelineId, step.stepName]);
 
   const retries = Number(step.retryCount) || 0;
+  const effectiveStepConfig = details.data?.stepConfig || stepConfig;
+  const scheduledRetry = details.data?.scheduledRetry;
+  const circuitBreakerState = details.data?.circuitBreakerState;
 
   async function replay() {
     setReplaying(true);
@@ -78,9 +86,9 @@ export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onRepl
             <dt>Type</dt>
             <dd className="mono">{step.typeClassName || '—'}</dd>
             <dt>Started</dt>
-            <dd>{step.dateStarted ? new Date(step.dateStarted).toLocaleString() : '—'}</dd>
+            <dd>{formatDateTime(step.dateStarted)}</dd>
             <dt>Ended</dt>
-            <dd>{step.dateEnded ? new Date(step.dateEnded).toLocaleString() : '—'}</dd>
+            <dd>{formatDateTime(step.dateEnded)}</dd>
             <dt>Retries</dt>
             <dd>
               {retries > 0 ? (
@@ -94,27 +102,63 @@ export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onRepl
             </dd>
             <dt>Parent step</dt>
             <dd className="mono">{context.data?.parentStepName || '—'}</dd>
+            <dt>Circuit state</dt>
+            <dd>{circuitBreakerState || (effectiveStepConfig?.circuitBreakerEnabled ? 'Loading…' : 'Not configured')}</dd>
+            <dt>Scheduled retry</dt>
+            <dd>{scheduledRetry ? formatDateTime(scheduledRetry.scheduledAt) : 'Not scheduled'}</dd>
           </dl>
         )}
 
         {tab === 'config' &&
-          (stepConfig ? (
+          (details.loading && !effectiveStepConfig ? (
+            <Loading />
+          ) : details.error && !effectiveStepConfig ? (
+            <ErrorState error={details.error} retry={details.reload} />
+          ) : effectiveStepConfig ? (
             <dl className="details">
               <dt>Execution</dt>
-              <dd>{stepConfig.async ? 'Asynchronous' : 'Synchronous'}</dd>
+              <dd>{effectiveStepConfig.async ? 'Asynchronous' : 'Synchronous'}</dd>
               <dt>Auto retry</dt>
-              <dd>{stepConfig.retryEnabled ? 'Enabled' : 'Disabled'}</dd>
+              <dd>{effectiveStepConfig.retryEnabled ? 'Enabled' : 'Disabled'}</dd>
               <dt>Max attempts</dt>
-              <dd>{stepConfig.retryEnabled ? stepConfig.maxAttempts : '—'}</dd>
+              <dd>{effectiveStepConfig.retryEnabled ? effectiveStepConfig.maxAttempts : '—'}</dd>
               <dt>Retry delay</dt>
-              <dd>{stepConfig.retryEnabled ? formatDuration(stepConfig.delayMillis) : '—'}</dd>
+              <dd>{effectiveStepConfig.retryEnabled ? formatDuration(effectiveStepConfig.delayMillis) : '—'}</dd>
               <dt>Policy</dt>
-              <dd>{stepConfig.overridden ? 'Per-step override' : 'Workflow default'}</dd>
+              <dd>{effectiveStepConfig.overridden ? 'Per-step override' : 'Workflow default'}</dd>
               <dt>Retries used</dt>
               <dd>
                 {retries}
-                {stepConfig.retryEnabled ? ` / ${stepConfig.maxAttempts}` : ''}
+                {effectiveStepConfig.retryEnabled ? ` / ${effectiveStepConfig.maxAttempts}` : ''}
               </dd>
+              <dt>Circuit breaker</dt>
+              <dd>{effectiveStepConfig.circuitBreakerEnabled ? 'Enabled' : 'Disabled'}</dd>
+              <dt>Breaker name</dt>
+              <dd className="mono">{effectiveStepConfig.circuitBreakerName || '—'}</dd>
+              <dt>Fallback</dt>
+              <dd>{effectiveStepConfig.circuitBreakerFallback || '—'}</dd>
+              <dt>Breaker state</dt>
+              <dd>{circuitBreakerState || (effectiveStepConfig.circuitBreakerEnabled ? 'Loading…' : '—')}</dd>
+              <dt>Open wait</dt>
+              <dd>
+                {effectiveStepConfig.circuitBreakerEnabled
+                  ? formatDuration(effectiveStepConfig.circuitBreakerWaitOpenMillis)
+                  : '—'}
+              </dd>
+              <dt>Half-open calls</dt>
+              <dd>{effectiveStepConfig.circuitBreakerEnabled ? effectiveStepConfig.circuitBreakerPermittedHalfOpenCalls ?? '—' : '—'}</dd>
+              <dt>Scheduled automatic retry</dt>
+              <dd>
+                {scheduledRetry
+                  ? `${formatDateTime(scheduledRetry.scheduledAt)} (${formatDuration(scheduledRetry.remainingMillis)} remaining)`
+                  : 'Not scheduled'}
+              </dd>
+              <dt>Scheduled retry type</dt>
+              <dd>{scheduledRetry?.type || '—'}</dd>
+              <dt>Scheduled retry reason</dt>
+              <dd>{scheduledRetry?.reason || '—'}</dd>
+              <dt>Scheduled batch size</dt>
+              <dd>{scheduledRetry?.batchSize ?? '—'}</dd>
             </dl>
           ) : (
             <p className="muted-note">No configuration available for this step.</p>

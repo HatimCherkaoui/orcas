@@ -22,6 +22,8 @@ public class WorkflowCircuitBreakerProperties {
     private int minimumNumberOfCalls = 10;
     /** Default failure rate threshold (percentage) that trips the breaker to OPEN. */
     private float failureRateThreshold = 50;
+    /** Default number of half-open probe calls allowed before the breaker decides whether to close. */
+    private int permittedNumberOfCallsInHalfOpenState = 10;
     /** Default duration the breaker stays OPEN before moving to HALF_OPEN. */
     private Duration waitDurationInOpenState = Duration.ofSeconds(30);
     /** Per-breaker overrides, keyed by the {@code name} used in {@code @WorkflowCircuitBreaker}. */
@@ -59,6 +61,14 @@ public class WorkflowCircuitBreakerProperties {
         failureRateThreshold = v;
     }
 
+    public int getPermittedNumberOfCallsInHalfOpenState() {
+        return permittedNumberOfCallsInHalfOpenState;
+    }
+
+    public void setPermittedNumberOfCallsInHalfOpenState(int v) {
+        permittedNumberOfCallsInHalfOpenState = v;
+    }
+
     public Duration getWaitDurationInOpenState() {
         return waitDurationInOpenState;
     }
@@ -76,6 +86,7 @@ public class WorkflowCircuitBreakerProperties {
         private Integer slidingWindowSize;
         private Integer minimumNumberOfCalls;
         private Float failureRateThreshold;
+        private Integer permittedNumberOfCallsInHalfOpenState;
         private Duration waitDurationInOpenState;
 
         public Integer getSlidingWindowSize() {
@@ -100,6 +111,14 @@ public class WorkflowCircuitBreakerProperties {
 
         public void setFailureRateThreshold(Float v) {
             failureRateThreshold = v;
+        }
+
+        public Integer getPermittedNumberOfCallsInHalfOpenState() {
+            return permittedNumberOfCallsInHalfOpenState;
+        }
+
+        public void setPermittedNumberOfCallsInHalfOpenState(Integer v) {
+            permittedNumberOfCallsInHalfOpenState = v;
         }
 
         public Duration getWaitDurationInOpenState() {

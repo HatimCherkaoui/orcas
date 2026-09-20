@@ -1,5 +1,9 @@
 package com.github.orcas.orchestrator.autoconfigure.rest;
 
+import com.github.orcas.orchestrator.autoconfigure.WorkflowCircuitBreakerProperties;
+import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryScheduler;
+import com.github.orcas.orchestrator.core.annotation.FallbackStrategy;
+import com.github.orcas.orchestrator.core.annotation.WorkflowCircuitBreaker;
 import com.github.orcas.orchestrator.core.api.Step;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
@@ -8,8 +12,13 @@ import com.github.orcas.orchestrator.core.model.StepExecutionContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContextHolder;
 import com.github.orcas.orchestrator.core.api.ContextMapper;
 import com.github.orcas.orchestrator.core.retry.WorkflowResponseException;
+import com.github.orcas.orchestrator.core.retry.WorkflowSuspendedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,6 +54,10 @@ public final class RestClientWorkflowStep extends Step {
     private final ObjectMapper mapper;
     private final WorkflowRestClientProperties properties;
     private final ContextMapper<Object> requestMapper;
+    private final WorkflowCircuitBreaker circuitBreaker;
+    private final ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider;
+    private final ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider;
+    private final ObjectProvider<WorkflowCircuitBreakerProperties> circuitBreakerPropertiesProvider;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
     private record Cached(Object value, Instant expiresAt) {
@@ -53,7 +66,10 @@ public final class RestClientWorkflowStep extends Step {
     public RestClientWorkflowStep(Object client, Class<?> interfaceType, String methodName, String name,
                                   Class<? extends ContextMapper<?>> mapperType,
                                   WorkflowErrorCategorizer categorizer, ObjectMapper mapper,
-                                  WorkflowRestClientProperties properties) {
+                                  WorkflowRestClientProperties properties,
+                                  ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider,
+                                  ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider,
+                                  ObjectProvider<WorkflowCircuitBreakerProperties> circuitBreakerPropertiesProvider) {
         this.client = client;
         this.name = name;
         this.categorizer = categorizer;
@@ -67,6 +83,15 @@ public final class RestClientWorkflowStep extends Step {
             throw new IllegalStateException("REST mapper must expose a public no-arg constructor: " + mapperType.getName(), e);
         }
         this.method = find(interfaceType, methodName);
+        this.circuitBreaker = resolveCircuitBreaker(interfaceType, method);
+        this.circuitBreakerRegistryProvider = circuitBreakerRegistryProvider;
+        this.retrySchedulerProvider = retrySchedulerProvider;
+        this.circuitBreakerPropertiesProvider = circuitBreakerPropertiesProvider;
+    }
+
+    private WorkflowCircuitBreaker resolveCircuitBreaker(Class<?> interfaceType, Method method) {
+        WorkflowCircuitBreaker annotation = AnnotatedElementUtils.findMergedAnnotation(method, WorkflowCircuitBreaker.class);
+        return annotation != null ? annotation : AnnotatedElementUtils.findMergedAnnotation(interfaceType, WorkflowCircuitBreaker.class);
     }
 
     private Method find(Class<?> type, String methodName) {
@@ -81,6 +106,35 @@ public final class RestClientWorkflowStep extends Step {
 
     @Override
     public StepResult execute(PipelineContext context) throws Exception {
+        CircuitBreakerRegistry circuitBreakerRegistry = circuitBreakerRegistryProvider.getIfAvailable();
+        WorkflowRetryScheduler retryScheduler = retrySchedulerProvider.getIfAvailable();
+        WorkflowCircuitBreakerProperties circuitBreakerProperties = circuitBreakerPropertiesProvider.getIfAvailable();
+        if (circuitBreaker == null || circuitBreakerRegistry == null || retryScheduler == null || circuitBreakerProperties == null) {
+            return doExecute(context);
+        }
+
+        CircuitBreaker breaker = circuitBreakerRegistry.circuitBreaker(circuitBreaker.name());
+        try {
+            return breaker.executeCheckedSupplier(() -> doExecute(context));
+        } catch (Throwable error) {
+            if (breaker.getState() == CircuitBreaker.State.OPEN) {
+                if (FallbackStrategy.REPLAY == circuitBreaker.fallback()) {
+                    WorkflowCircuitBreakerProperties.Instance breakerInstance = circuitBreakerProperties.getInstances().get(circuitBreaker.name());
+                    var waitDuration = breakerInstance != null && breakerInstance.getWaitDurationInOpenState() != null
+                            ? breakerInstance.getWaitDurationInOpenState()
+                            : circuitBreakerProperties.getWaitDurationInOpenState();
+                    var permittedCalls = breakerInstance != null && breakerInstance.getPermittedNumberOfCallsInHalfOpenState() != null
+                            ? breakerInstance.getPermittedNumberOfCallsInHalfOpenState()
+                            : circuitBreakerProperties.getPermittedNumberOfCallsInHalfOpenState();
+                    retryScheduler.scheduleHalfOpenReplay(circuitBreaker.name(), name, waitDuration, permittedCalls);
+                }
+                throw new WorkflowSuspendedException(name, categorizer.classify(error));
+            }
+            throw unwrap(error);
+        }
+    }
+
+    private StepResult doExecute(PipelineContext context) throws Exception {
         StepExecutionContext execution = WorkflowContextHolder.step();
         Object[] args = arguments(execution);
         String cacheKey = null;

@@ -39,6 +39,7 @@ public class WorkflowAopAutoConfiguration {
                 .slidingWindowSize(p.getSlidingWindowSize())
                 .minimumNumberOfCalls(p.getMinimumNumberOfCalls())
                 .failureRateThreshold(p.getFailureRateThreshold())
+                .permittedNumberOfCallsInHalfOpenState(p.getPermittedNumberOfCallsInHalfOpenState())
                 .waitDurationInOpenState(p.getWaitDurationInOpenState())
                 .build();
         var registry = CircuitBreakerRegistry.of(config);
@@ -46,6 +47,9 @@ public class WorkflowAopAutoConfiguration {
                 .slidingWindowSize(i.getSlidingWindowSize() == null ? p.getSlidingWindowSize() : i.getSlidingWindowSize())
                 .minimumNumberOfCalls(i.getMinimumNumberOfCalls() == null ? p.getMinimumNumberOfCalls() : i.getMinimumNumberOfCalls())
                 .failureRateThreshold(i.getFailureRateThreshold() == null ? p.getFailureRateThreshold() : i.getFailureRateThreshold())
+                .permittedNumberOfCallsInHalfOpenState(i.getPermittedNumberOfCallsInHalfOpenState() == null
+                        ? p.getPermittedNumberOfCallsInHalfOpenState()
+                        : i.getPermittedNumberOfCallsInHalfOpenState())
                 .waitDurationInOpenState(i.getWaitDurationInOpenState() == null ? p.getWaitDurationInOpenState() : i.getWaitDurationInOpenState())
                 .build()));
         return registry;
@@ -59,15 +63,16 @@ public class WorkflowAopAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean(WorkflowRetryScheduler.class)
     @ConditionalOnBean(WorkflowEngine.class)
-    WorkflowRetryScheduler workflowRetryScheduler(WorkflowEngine engine, ObjectProvider<WorkflowStateStore> stateStoreProvider) {
-        return new WorkflowRetryScheduler(engine, stateStoreProvider.getIfAvailable());
+    WorkflowRetryScheduler workflowRetryScheduler(WorkflowEngine engine, CircuitBreakerRegistry registry, ObjectProvider<WorkflowStateStore> stateStoreProvider) {
+        return new WorkflowRetryScheduler(engine, stateStoreProvider.getIfAvailable(), registry);
     }
 
     @Bean
     @ConditionalOnMissingBean(WorkflowCircuitBreakerAspect.class)
     @ConditionalOnBean(WorkflowEngine.class)
-    WorkflowCircuitBreakerAspect workflowCircuitBreakerAspect(CircuitBreakerRegistry registry, WorkflowErrorCategorizer categorizer, WorkflowRetryScheduler scheduler) {
-        return new WorkflowCircuitBreakerAspect(registry, categorizer, scheduler);
+    WorkflowCircuitBreakerAspect workflowCircuitBreakerAspect(CircuitBreakerRegistry registry, WorkflowErrorCategorizer categorizer, WorkflowCircuitBreakerProperties properties, WorkflowRetryScheduler scheduler) {
+        return new WorkflowCircuitBreakerAspect(registry, categorizer, properties, scheduler);
     }
 }
+
 

@@ -40,6 +40,8 @@ export const api = {
 
   // Steps
   steps: (id) => request(`/workflows/${encodeURIComponent(id)}/steps`),
+  step: (id, step) =>
+    request(`/workflows/${encodeURIComponent(id)}/steps/${encodeURIComponent(step)}`),
   stepContext: (id, step) =>
     request(`/workflows/${encodeURIComponent(id)}/steps/${encodeURIComponent(step)}/context`, {
       allowMissing: true,

@@ -1211,12 +1211,36 @@ button {
   flex: 1;
 }
 
+.rf-step-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .rf-step-body strong {
   font-size: 13px;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rf-step-circuit-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgba(31, 111, 235, 0.12);
+  border: 1px solid rgba(31, 111, 235, 0.24);
+  color: var(--ocean-700);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: lowercase;
 }
 
 .rf-step-state {

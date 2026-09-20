@@ -19,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -310,6 +311,15 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     }
 
     @Override
+    public List<String> suspendedWorkflowIds(String stepName) {
+        return jdbc.queryForList("""
+                        select pipeline_id
+                          from workflow_step
+                         where step_name=:step and state='SUSPENDED'
+                         order by date_updated asc, pipeline_id asc
+                        """,
+                new MapSqlParameterSource().addValue("step", stepName, Types.VARCHAR), String.class);
+    }
     public void saveStepContext(StepContext context) {
         Timestamp now = Timestamp.from(context.updatedAt() == null ? Instant.now() : context.updatedAt());
 
@@ -431,6 +441,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     private void logMetadata(String id, String action, String snapshot, Timestamp at) {
         log("workflow_metadata_log", id, null, action, snapshot, at);
     }
+
 
     private void log(String table, String id, String step, String action, String snapshot, Timestamp at) {
         String sql = switch (table) {

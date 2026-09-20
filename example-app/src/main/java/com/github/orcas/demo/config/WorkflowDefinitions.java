@@ -7,7 +7,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkflowDefinitions implements WorkflowDefinitionProvider {
     private final StepCatalog steps;
-    public WorkflowDefinitions(StepCatalog steps) { this.steps = steps; }
+
+    public WorkflowDefinitions(StepCatalog steps) {
+        this.steps = steps;
+    }
 
     @Override
     public WorkflowDefinition workflow() {
@@ -19,6 +22,8 @@ public class WorkflowDefinitions implements WorkflowDefinitionProvider {
                 .then("join").end()
                 .sequential().when(StatusCriteria.status("join", Status.SUCCESS))
                 .then("tofail")
+                .sequential().when(StatusCriteria.status("tofail", Status.SUCCESS))
+                .then("veryinstableapi-call")
                 .async().when(StatusCriteria.status("join", Status.SUCCESS))
                 .and("notify").end()
                 .build();

@@ -39,6 +39,9 @@ workflow:
         load-db:
           max-attempts: 3
           delay: 5s
+        veryinstableapi-call:
+          max-attempts: 9
+          delay: 2s
     service:
       enabled: true
       base-path: /api/orchestrator

@@ -225,6 +225,7 @@ services:
       SPRING_KAFKA_CONSUMER_VALUE_DESERIALIZER: org.apache.kafka.common.serialization.StringDeserializer
       DEMO_CUSTOMER_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
+      DEMO_VERYINSTABLEAPI_BASE_URL: http://wiremock:8080
       JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       LOG_FORMAT: ecs

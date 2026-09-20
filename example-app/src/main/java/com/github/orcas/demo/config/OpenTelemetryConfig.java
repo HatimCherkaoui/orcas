@@ -1,5 +1,6 @@
 package com.github.orcas.demo.config;
 
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.exporter.otlp.http.logs.OtlpHttpLogRecordExporter;
@@ -48,10 +49,17 @@ public class OpenTelemetryConfig {
 
         OpenTelemetrySdk openTelemetry = OpenTelemetrySdk.builder()
                 .setLoggerProvider(loggerProvider)
-                .buildAndRegisterGlobal();
+                .build();
+
+        try {
+            GlobalOpenTelemetry.set(openTelemetry);
+        } catch (IllegalStateException ignored) {
+            // Tests can bootstrap multiple application contexts in the same JVM.
+        }
 
         OpenTelemetryAppender.install(openTelemetry);
 
         return openTelemetry;
     }
 }
+

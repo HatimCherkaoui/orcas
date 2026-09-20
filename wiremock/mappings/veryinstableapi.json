@@ -1,13 +1,13 @@
 {
   "request": {
     "method": "GET",
-    "urlPathPattern": "/customers/.*"
+    "urlPathPattern": "/veryinstableendpoint/.*"
   },
   "response": {
     "status": 200,
     "fixedDelayMilliseconds": 1000,
     "jsonBody": {
-      "source": "customer",
+      "source": "veryinstableapi",
       "status": "OK"
     }
   }
