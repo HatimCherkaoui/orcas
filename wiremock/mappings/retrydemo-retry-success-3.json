@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "scenarioName": "retry-success-demo",
+  "requiredScenarioState": "FAILED_TWICE",
+  "newScenarioState": "RECOVERED",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/retrydemo/retry-success/success/.*"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 250,
+    "jsonBody": {
+      "source": "retrydemo",
+      "status": "RECOVERED"
+    }
+  }
+}
+

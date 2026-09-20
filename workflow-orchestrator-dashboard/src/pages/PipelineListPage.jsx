@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Filter, Layers3, RefreshCw, Server } from 'lucide-react';
+import { Activity, Filter, Layers3, RefreshCw, RotateCcw, Server } from 'lucide-react';
 import { api } from '../api';
 import { useLoad } from '../hooks/useLoad';
 import { Shell } from '../components/layout/Shell';
@@ -13,6 +13,7 @@ const STEP_STATUS_OPTIONS = ['RUNNING', 'SUCCESS', 'FAILED', 'SUSPENDED', 'SKIPP
 
 const DEFAULT_FILTERS = {
   workflow: '',
+  workflowId: '',
   status: '',
   stepName: '',
   stepStatus: '',
@@ -22,45 +23,89 @@ const DEFAULT_FILTERS = {
   size: 8,
 };
 
-/** Converts a `YYYY-MM-DD` date input value into an ISO instant, at the start or end of that day. */
 function toInstant(dateValue, endOfDay) {
   if (!dateValue) return '';
   return `${dateValue}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z`;
 }
 
-/** Landing page: a filterable, pageable table of pipeline executions, linking into the graph view. */
 export default function PipelineListPage({ navigate }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [batchReplay, setBatchReplay] = useState({ running: false, result: null, error: null });
 
   const query = {
-    ...filters,
+    workflowId: filters.workflowId,
+    workflow: filters.workflow,
+    status: filters.status,
+    stepName: filters.stepName,
+    stepStatus: filters.stepStatus,
     createdFrom: toInstant(filters.createdFrom, false),
     createdTo: toInstant(filters.createdTo, true),
+    page: filters.page,
+    size: filters.size,
   };
+
   const load = useLoad(() => api.workflows(query), [JSON.stringify(query)]);
   const rows = load.data?.content || [];
+  const suspendedFilterActive = filters.status === 'SUSPENDED' || filters.stepStatus === 'SUSPENDED';
 
-  const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value, page: 0 }));
-  const setPage = (page) => setFilters((current) => ({ ...current, page }));
+  function updateFilter(key, value) {
+    setBatchReplay({ running: false, result: null, error: null });
+    setFilters((current) => ({ ...current, [key]: value, page: 0 }));
+  }
+
+  function setPage(page) {
+    setFilters((current) => ({ ...current, page }));
+  }
+
+  async function replaySuspended() {
+    setBatchReplay({ running: true, result: null, error: null });
+    try {
+      const result = await api.replaySuspendedSteps({
+        workflowId: query.workflowId,
+        workflow: query.workflow,
+        status: query.status,
+        stepName: query.stepName,
+        stepStatus: query.stepStatus,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+      });
+      setBatchReplay({ running: false, result, error: null });
+      load.reload();
+    } catch (error) {
+      setBatchReplay({ running: false, result: null, error });
+    }
+  }
 
   return (
     <Shell page="/" navigate={navigate}>
       <PageHeader
         eyebrow="Operations"
-        title="Pipelines"
-        subtitle="Monitor executions and replay suspended activities"
+        title="Workflows"
+        subtitle="Search workflow executions, inspect live state, and replay suspended steps."
         actions={
-          <button className="button" onClick={load.reload}>
-            <RefreshCw size={15} />
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {suspendedFilterActive && (
+              <button
+                className="button primary"
+                onClick={replaySuspended}
+                disabled={batchReplay.running || !(load.data?.totalElements > 0)}
+              >
+                <RotateCcw size={15} />
+                {batchReplay.running ? 'Retrying suspended…' : 'Retry suspended list'}
+              </button>
+            )}
+            <button className="button" onClick={load.reload}>
+              <RefreshCw size={15} />
+              Refresh
+            </button>
+          </div>
         }
       />
 
       <div className="content">
         <div className="stats-grid">
           <StatCard label="Executions" value={load.data?.totalElements ?? '—'} icon={Layers3} />
-          <StatCard label="Running" value={rows.filter((r) => r.status === 'RUNNING').length} icon={Activity} />
+          <StatCard label="Running" value={rows.filter((row) => row.status === 'RUNNING').length} icon={Activity} />
           <StatCard
             label="Page"
             value={load.data ? `${load.data.page + 1}/${Math.max(load.data.totalPages, 1)}` : '—'}
@@ -74,24 +119,25 @@ export default function PipelineListPage({ navigate }) {
             <strong>Filters</strong>
           </div>
           <div className="filter-grid">
-            <SearchBox value={filters.workflow} onChange={(v) => updateFilter('workflow', v)} placeholder="Workflow name" />
-            <SelectField
-              label="Workflow status"
-              value={filters.status}
-              onChange={(v) => updateFilter('status', v)}
-              options={STATUS_OPTIONS}
-            />
-            <SearchBox value={filters.stepName} onChange={(v) => updateFilter('stepName', v)} placeholder="Step name" />
-            <SelectField
-              label="Step status"
-              value={filters.stepStatus}
-              onChange={(v) => updateFilter('stepStatus', v)}
-              options={STEP_STATUS_OPTIONS}
-            />
-            <DateField label="Created from" value={filters.createdFrom} onChange={(v) => updateFilter('createdFrom', v)} />
-            <DateField label="Created to" value={filters.createdTo} onChange={(v) => updateFilter('createdTo', v)} />
+            <SearchBox value={filters.workflow} onChange={(value) => updateFilter('workflow', value)} placeholder="Workflow name" />
+            <SearchBox value={filters.workflowId} onChange={(value) => updateFilter('workflowId', value)} placeholder="Workflow id" />
+            <SelectField label="Workflow status" value={filters.status} onChange={(value) => updateFilter('status', value)} options={STATUS_OPTIONS} />
+            <SearchBox value={filters.stepName} onChange={(value) => updateFilter('stepName', value)} placeholder="Step name" />
+            <SelectField label="Step status" value={filters.stepStatus} onChange={(value) => updateFilter('stepStatus', value)} options={STEP_STATUS_OPTIONS} />
+            <DateField label="Created from" value={filters.createdFrom} onChange={(value) => updateFilter('createdFrom', value)} />
+            <DateField label="Created to" value={filters.createdTo} onChange={(value) => updateFilter('createdTo', value)} />
           </div>
         </Card>
+
+        {suspendedFilterActive && batchReplay.result && (
+          <p className="muted-note">
+            Batch replay submitted for {batchReplay.result.replayed} of {batchReplay.result.matched} suspended step(s)
+            {batchReplay.result.failed ? ` (${batchReplay.result.failed} failed to submit).` : '.'}
+          </p>
+        )}
+        {suspendedFilterActive && batchReplay.error && (
+          <p className="muted-note">Unable to submit batch replay: {batchReplay.error.message}</p>
+        )}
 
         {load.loading ? (
           <Loading />
@@ -106,19 +152,23 @@ export default function PipelineListPage({ navigate }) {
               <span>Created</span>
               <span>ID</span>
             </div>
-            {rows.map((row) => (
-              <button
-                className="table-row"
-                key={row.workflowId}
-                onClick={() => navigate(`/${encodeURIComponent(row.workflowId)}`)}
-              >
-                <strong title={row.workflow}>{row.workflow}</strong>
-                <StatusBadge value={row.status} />
-                <span title={row.currentStep || undefined}>{row.currentStep || '—'}</span>
-                <time>{row.dateCreated ? new Date(row.dateCreated).toLocaleString() : '—'}</time>
-                <code className="mono" title={row.workflowId}>{row.workflowId}</code>
-              </button>
-            ))}
+            {rows.length ? (
+              rows.map((row) => (
+                <button
+                  className="table-row"
+                  key={row.workflowId}
+                  onClick={() => navigate(`/${encodeURIComponent(row.workflowId)}`)}
+                >
+                  <strong title={row.workflow}>{row.workflow}</strong>
+                  <StatusBadge value={row.status} />
+                  <span title={row.currentStep || undefined}>{row.currentStep || '—'}</span>
+                  <time>{row.dateCreated ? new Date(row.dateCreated).toLocaleString() : '—'}</time>
+                  <code className="mono" title={row.workflowId}>{row.workflowId}</code>
+                </button>
+              ))
+            ) : (
+              <div className="empty-table muted-note">No workflows matched the current filters.</div>
+            )}
             {load.data && (
               <Pagination
                 page={load.data.page}
@@ -133,4 +183,5 @@ export default function PipelineListPage({ navigate }) {
     </Shell>
   );
 }
+
 

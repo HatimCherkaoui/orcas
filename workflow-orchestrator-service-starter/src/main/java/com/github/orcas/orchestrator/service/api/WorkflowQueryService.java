@@ -8,7 +8,7 @@ import com.github.orcas.orchestrator.core.model.StepContext;
 
 /**
  * Read-only query facade over persisted workflow execution state, powering the
- * dashboard's pipeline list, detail, and audit-log views. Implementations (see
+ * dashboard's workflow list, detail, and audit-log views. Implementations (see
  * {@code JdbcWorkflowQueryService}) translate these calls into read queries against
  * the configured workflow state store; no mutation happens through this interface
  * (see {@link WorkflowAdminService} for that).

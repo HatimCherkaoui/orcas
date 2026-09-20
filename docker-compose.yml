@@ -54,7 +54,7 @@ services:
     image: wiremock/wiremock:3.13.2
     container_name: workflow-wiremock
     restart: unless-stopped
-    command: ["--verbose"]
+    command: [ "--verbose" ]
     volumes:
       - ./wiremock:/home/wiremock:ro
     ports:
@@ -74,7 +74,7 @@ services:
     ports:
       - "9200:9200"
     healthcheck:
-      test: ["CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: [ "CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -117,7 +117,7 @@ services:
       es-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      test: [ "CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -134,7 +134,7 @@ services:
         condition: service_healthy
     networks:
       - observability-net
-    entrypoint: ["/bin/bash", "-c"]
+    entrypoint: [ "/bin/bash", "-c" ]
     command:
       - |
         echo "--> 1. Creating Data Views in Default Space..."
@@ -225,6 +225,7 @@ services:
       SPRING_KAFKA_CONSUMER_VALUE_DESERIALIZER: org.apache.kafka.common.serialization.StringDeserializer
       DEMO_CUSTOMER_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
+      DEMO_RETRY_BASE_URL: http://wiremock:8080
       DEMO_VERYINSTABLEAPI_BASE_URL: http://wiremock:8080
       JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318

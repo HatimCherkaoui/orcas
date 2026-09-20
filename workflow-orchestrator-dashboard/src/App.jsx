@@ -1,27 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import PipelineListPage from './pages/PipelineListPage';
 import PipelineDetailPage from './pages/PipelineDetailPage';
 import KafkaPage from './pages/KafkaPage';
 
-/** Minimal client-side router: no external dependency needed for two route shapes. */
+function normalizePath(pathname) {
+  const path = pathname || '/';
+  return path === '/' ? '/' : path.replace(/\/+$/, '') || '/';
+}
+
 export default function App() {
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(() => normalizePath(window.location.pathname));
 
   useEffect(() => {
-    const onPopState = () => setPath(window.location.pathname);
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    const handlePopState = () => setPath(normalizePath(window.location.pathname));
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  function navigate(nextPath) {
-    window.history.pushState({}, '', nextPath);
-    setPath(nextPath);
+  const navigate = useCallback((nextPath) => {
+    const normalized = normalizePath(nextPath);
+    if (normalized === path) return;
+    window.history.pushState({}, '', normalized);
+    setPath(normalized);
+  }, [path]);
+
+  const route = useMemo(() => {
+    if (path === '/kafka' || path.startsWith('/kafka/')) {
+      return { type: 'kafka' };
+    }
+
+    if (path === '/' || path === '') {
+      return { type: 'list' };
+    }
+
+    const workflowId = decodeURIComponent(path.replace(/^\//, ''));
+    if (!workflowId || workflowId === 'undefined') {
+      return { type: 'list' };
+    }
+
+    return { type: 'detail', workflowId };
+  }, [path]);
+
+  if (route.type === 'kafka') {
+    return <KafkaPage navigate={navigate} />;
   }
 
-  if (path === '/kafka') return <KafkaPage navigate={navigate} />;
-  if (path === '/' || path === '') return <PipelineListPage navigate={navigate} />;
+  if (route.type === 'detail') {
+    return <PipelineDetailPage id={route.workflowId} navigate={navigate} />;
+  }
 
-  const pipelineId = decodeURIComponent(path.slice(1));
-  if (!pipelineId || pipelineId === 'undefined') return <PipelineListPage navigate={navigate} />;
-  return <PipelineDetailPage id={pipelineId} navigate={navigate} />;
+  return <PipelineListPage navigate={navigate} />;
 }

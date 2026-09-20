@@ -468,6 +468,37 @@ class WorkflowEngineTest {
     }
 
     @Test
+    void shouldNotThrowWhenSuspendedStepIsWaitingForJoin() {
+        // Given
+        var definition = mock(WorkflowDefinition.class);
+
+        when(registry.get("myWorkflow"))
+                .thenReturn(definition);
+
+        when(definition.findStep("step-1"))
+                .thenReturn(null);
+
+        when(definition.matching(any(StatusEvent.class)))
+                .thenReturn(List.of());
+
+        when(definition.waitingFor(any(StatusEvent.class)))
+                .thenReturn(true);
+
+        var event = event(
+                "workflow-123",
+                "myWorkflow",
+                "step-1",
+                Status.SUSPENDED
+        );
+
+        // When / Then
+        assertThatCode(() -> engine.handle(event))
+                .doesNotThrowAnyException();
+
+        verify(store, never()).finish(any());
+    }
+
+    @Test
     void shouldClearMdcAfterHandlingEvent() {
         // Given
         var definition = mock(WorkflowDefinition.class);

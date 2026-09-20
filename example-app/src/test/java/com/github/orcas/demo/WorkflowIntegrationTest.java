@@ -71,6 +71,7 @@ class WorkflowIntegrationTest {
         r.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         r.add("demo.customer.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.inventory.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
+        r.add("demo.retry.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.veryinstableapi.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.tofail.force-timeout", () -> "false");
         r.add("management.otlp.tracing.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/traces");
@@ -91,6 +92,12 @@ class WorkflowIntegrationTest {
         String inventory = """
                 {"request":{"method":"GET","urlPathPattern":"/inventory/.*"},"response":{"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"inventory","status":"OK"}}}
                 """;
+        String retrySuccess = """
+                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/success/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
+                """;
+        String retrySuspend = """
+                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/suspend/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
+                """;
         String veryInstableApi = """
                 {"request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":200,"fixedDelayMilliseconds":1000,"jsonBody":{"source":"veryinstableapi","status":"OK"}}}
                 """;
@@ -101,7 +108,7 @@ class WorkflowIntegrationTest {
                 {"request":{"method":"POST","urlPath":"/v1/logs"},"response":{"status":200}}
                 """;
         HttpClient client = HttpClient.newHttpClient();
-        for (String mapping : new String[]{customer, inventory, veryInstableApi, otlpTraces, otlpLogs}) {
+        for (String mapping : new String[]{customer, inventory, retrySuccess, retrySuspend, veryInstableApi, otlpTraces, otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(base + "/__admin/mappings"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapping))
@@ -117,15 +124,15 @@ class WorkflowIntegrationTest {
                 .body("{\"orderId\":\"42\",\"amount\":125}")
                 .when().post("/workflows/order-pipeline").then().statusCode(202);
 
-        String pipelineId = awaitNewSuccessfulPipeline(before);
+        String workflowId = awaitNewSuccessfulPipeline(before);
 
         // The workflow instance may flip to SUCCESS a moment before the parallel
         // step-context rows for its branches are fully persisted, so poll (rather
         // than assert once) until both branch contexts are visible.
         var contexts = new java.util.concurrent.atomic.AtomicReference<com.github.orcas.orchestrator.core.model.StepContext[]>();
         await().atMost(Duration.ofSeconds(10)).ignoreExceptions().untilAsserted(() -> {
-            var c = workflowQueryService.stepContext(pipelineId, "customer-call").orElseThrow();
-            var i = workflowQueryService.stepContext(pipelineId, "inventory-call").orElseThrow();
+            var c = workflowQueryService.stepContext(workflowId, "customer-call").orElseThrow();
+            var i = workflowQueryService.stepContext(workflowId, "inventory-call").orElseThrow();
             contexts.set(new com.github.orcas.orchestrator.core.model.StepContext[]{c, i});
         });
         var customer = contexts.get()[0];
@@ -145,7 +152,7 @@ class WorkflowIntegrationTest {
         assertTrue((System.nanoTime() - started) < Duration.ofSeconds(8).toNanos(),
                 "two 1s calls should not behave like a long sequential chain");
 
-        given().port(port).when().get("/api/orchestrator/workflows/" + pipelineId + "/steps/customer-call/context")
+        given().port(port).when().get("/api/orchestrator/workflows/" + workflowId + "/steps/customer-call/context")
                 .then().statusCode(200).body("parentStepName", equalTo("extract-order"));
     }
 
@@ -161,7 +168,7 @@ class WorkflowIntegrationTest {
                 .then()
                 .statusCode(202);
 
-        String pipelineId = awaitNewSuccessfulPipeline(before);
+        String workflowId = awaitNewSuccessfulPipeline(before);
 
         // The overall workflow status can flip to SUCCESS a moment before every
         // persisted row (context/metadata/steps/logs) for the async 'notify' step
@@ -169,32 +176,32 @@ class WorkflowIntegrationTest {
         await().atMost(Duration.ofSeconds(10)).ignoreExceptions().untilAsserted(() -> {
             assertEquals(1, jdbc.queryForObject(
                     "select count(*) from workflow_context where pipeline_id=?",
-                    Integer.class, pipelineId));
+                    Integer.class, workflowId));
 
             assertEquals(1, jdbc.queryForObject(
                     "select count(*) from workflow_metadata where pipeline_id=?",
-                    Integer.class, pipelineId));
+                    Integer.class, workflowId));
 
             assertTrue(jdbc.queryForObject(
                     "select count(*) from workflow_step where pipeline_id=?",
-                    Integer.class, pipelineId) >= 4);
+                    Integer.class, workflowId) >= 4);
 
             assertTrue(jdbc.queryForObject(
                     "select count(*) from workflow_log where pipeline_id=?",
-                    Integer.class, pipelineId) > 0);
+                    Integer.class, workflowId) > 0);
 
             assertTrue(jdbc.queryForObject(
                     "select count(*) from workflow_step_log where pipeline_id=?",
-                    Integer.class, pipelineId) > 0);
+                    Integer.class, workflowId) > 0);
         });
 
         given()
                 .port(port)
                 .when()
-                .get("/api/orchestrator/workflows/" + pipelineId)
+                .get("/api/orchestrator/workflows/" + workflowId)
                 .then()
                 .statusCode(200)
-                .body("workflowId", equalTo(pipelineId))
+                .body("workflowId", equalTo(workflowId))
                 .body("status", equalTo("SUCCESS"));
 
         given()
@@ -208,7 +215,7 @@ class WorkflowIntegrationTest {
         given()
                 .port(port)
                 .when()
-                .get("/api/orchestrator/workflows/" + pipelineId + "/steps")
+                .get("/api/orchestrator/workflows/" + workflowId + "/steps")
                 .then()
                 .statusCode(200)
                 .body("size()", greaterThan(0));
@@ -227,7 +234,7 @@ class WorkflowIntegrationTest {
                 given()
                         .port(port)
                         .when()
-                        .get("/api/orchestrator/workflows/" + pipelineId + "/steps/veryinstableapi-call")
+                        .get("/api/orchestrator/workflows/" + workflowId + "/steps/veryinstableapi-call")
                         .then()
                         .statusCode(200)
                         .body("step.stepName", equalTo("veryinstableapi-call"))
@@ -239,7 +246,7 @@ class WorkflowIntegrationTest {
         // SUCCESS; wait for it to settle so it can't race with (and overwrite)
         // the manual PATCH override performed below.
         await().atMost(Duration.ofSeconds(30)).ignoreExceptions().untilAsserted(() -> {
-            var notify = workflowQueryService.step(pipelineId, "notify");
+            var notify = workflowQueryService.step(workflowId, "notify");
             assertTrue(notify.state().equals("SUCCESS") || notify.state().equals("FAILED"));
         });
 
@@ -248,14 +255,14 @@ class WorkflowIntegrationTest {
                 .contentType("application/json")
                 .body("{\"status\":\"FAILED\"}")
                 .when()
-                .patch("/api/orchestrator/workflows/" + pipelineId)
+                .patch("/api/orchestrator/workflows/" + workflowId)
                 .then()
                 .statusCode(204);
 
         given()
                 .port(port)
                 .when()
-                .get("/api/orchestrator/workflows/" + pipelineId)
+                .get("/api/orchestrator/workflows/" + workflowId)
                 .then()
                 .statusCode(200)
                 .body("status", equalTo("FAILED"));
@@ -281,15 +288,15 @@ class WorkflowIntegrationTest {
                 .then()
                 .statusCode(202);
 
-        String pipelineId = awaitNewSuccessfulPipeline(before);
+        String workflowId = awaitNewSuccessfulPipeline(before);
 
         await().atMost(Duration.ofSeconds(60)).pollDelay(Duration.ofMillis(10)).ignoreExceptions().untilAsserted(() -> {
-            var steps = workflowQueryService.steps(pipelineId);
+            var steps = workflowQueryService.steps(workflowId);
             System.out.println(steps);
             assertTrue(steps.size() >= 4);
         });
         await().atMost(Duration.ofSeconds(60)).pollInterval(Duration.ofMillis(500)).pollDelay(Duration.ofMillis(10)).ignoreExceptions().untilAsserted(() -> {
-            var step = workflowQueryService.step(pipelineId, "veryinstableapi-call");
+            var step = workflowQueryService.step(workflowId, "veryinstableapi-call");
             System.out.println("state: " + step);
             assertTrue(step.state().equals("SUCCESS"));
         });

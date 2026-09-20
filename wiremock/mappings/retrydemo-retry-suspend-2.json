@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "scenarioName": "retry-suspend-demo",
+  "requiredScenarioState": "FAILED_ONCE",
+  "newScenarioState": "READY_FOR_REPLAY",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/retrydemo/retry-suspend/suspend/.*"
+  },
+  "response": {
+    "status": 500,
+    "fixedDelayMilliseconds": 250,
+    "jsonBody": {
+      "source": "retrydemo",
+      "status": "ERROR-2"
+    }
+  }
+}
+

@@ -4,7 +4,7 @@ description: 'Orcas Architect: authoritative, self-contained guide to the Orcas 
 
 # Orcas Architect
 
-Orcas is a **lightweight Java workflow/orchestration library** (not a platform) shipped as a Spring Boot starter. Core has zero deps beyond SLF4J; it reuses the host app's `DataSource`/`NamedParameterJdbcTemplate` and Kafka beans (no JPA/Hibernate, no owned infra). Steps run on virtual threads (Java 25); state transitions are JDBC-persisted and Kafka-driven for async/distributed execution. A React/Vite dashboard visualizes pipelines as an interactive graph.
+Orcas is a **lightweight Java workflow/orchestration library** (not a platform) shipped as a Spring Boot starter. Core has zero deps beyond SLF4J; it reuses the host app's `DataSource`/`NamedParameterJdbcTemplate` and Kafka beans (no JPA/Hibernate, no owned infra). Steps run on virtual threads (Java 25); state transitions are JDBC-persisted and Kafka-driven for async/distributed execution. A React/Vite dashboard visualizes workflows as an interactive graph.
 
 This manifest is intentionally exhaustive so the agent can answer "where is X / how does Y work" from memory, minimizing file reads and searches. This agent has access to **all available tools** (file read/write, terminal, git, http, search, etc.) but should still ask for approval before destructive or production-impacting actions.
 

@@ -36,12 +36,15 @@ workflow:
         notify:
           max-attempts: 8
           delay: 1s
-        load-db:
+        retry-success-call:
           max-attempts: 3
-          delay: 5s
+          delay: 1s
+        retry-suspend-call:
+          max-attempts: 2
+          delay: 1s
         veryinstableapi-call:
-          max-attempts: 9
-          delay: 2s
+          max-attempts: 1
+          delay: 1s
     service:
       enabled: true
       base-path: /api/orchestrator
@@ -60,13 +63,17 @@ workflow:
         bearer-token: ${DEMO_CUSTOMER_BEARER:}
     circuit-breaker:
       enabled: true
-      sliding-window-size: 20
-      minimum-number-of-calls: 10
+      sliding-window-size: 2
+      minimum-number-of-calls: 2
       failure-rate-threshold: 50
-      wait-duration-in-open-state: 30s
+      wait-duration-in-open-state: 15s
+      permitted-number-of-calls-in-half-open-state: 1
       instances:
-        customer:
+        veryinstableapi-call:
+          minimum-number-of-calls: 2
           failure-rate-threshold: 50
+          wait-duration-in-open-state: 15s
+          permitted-number-of-calls-in-half-open-state: 1
 
 server:
   port: 8080
@@ -76,6 +83,10 @@ demo:
     base-url: ${DEMO_CUSTOMER_BASE_URL:https://httpbin.org}
   inventory:
     base-url: ${DEMO_INVENTORY_BASE_URL:https://httpbin.org}
+  retry:
+    base-url: ${DEMO_RETRY_BASE_URL:http://localhost:8089}
+  veryinstableapi:
+    base-url: ${DEMO_VERYINSTABLEAPI_BASE_URL:http://localhost:8089}
 
 logging:
   pattern:

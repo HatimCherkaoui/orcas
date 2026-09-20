@@ -70,6 +70,7 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         r.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         r.add("demo.customer.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.inventory.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
+        r.add("demo.retry.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.veryinstableapi.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.tofail.force-timeout", () -> "false");
         r.add("management.otlp.tracing.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/traces");
@@ -99,6 +100,12 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         String inventory = """
                 {"request":{"method":"GET","urlPathPattern":"/inventory/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"inventory","status":"OK"}}}
                 """;
+        String retrySuccess = """
+                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/success/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
+                """;
+        String retrySuspend = """
+                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/suspend/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
+                """;
         String unstableFirst = """
                 {"scenarioName":"unstable-recovery","requiredScenarioState":"Started","newScenarioState":"FAILED_ONCE","request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":500,"fixedDelayMilliseconds":100,"jsonBody":{"source":"veryinstableapi","status":"ERROR-1"}}}
                 """;
@@ -118,7 +125,7 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
                 {"request":{"method":"POST","urlPath":"/v1/logs"},"response":{"status":200}}
                 """;
         HttpClient client = HttpClient.newHttpClient();
-        for (String mapping : new String[]{customer, inventory, unstableFirst, unstableSecond, unstableSuccess, unstableRecovered, otlpTraces, otlpLogs}) {
+        for (String mapping : new String[]{customer, inventory, retrySuccess, retrySuspend, unstableFirst, unstableSecond, unstableSuccess, unstableRecovered, otlpTraces, otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(base + "/__admin/mappings"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapping))
@@ -153,17 +160,17 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
                         .body("scheduledRetry.breakerName", equalTo("veryinstableapi-call"))
                         .body("scheduledRetry.scheduledAt", notNullValue()));
 
-        var pipelineIds = awaitSuccessfulPipelineIds(before, 3);
-        assertEquals(3, pipelineIds.size());
+        var workflowIds = awaitSuccessfulPipelineIds(before, 3);
+        assertEquals(3, workflowIds.size());
 
-        for (String pipelineId : pipelineIds) {
+        for (String workflowId : workflowIds) {
             await().atMost(Duration.ofSeconds(90)).pollInterval(Duration.ofMillis(500)).ignoreExceptions().untilAsserted(() -> {
-                var step = workflowQueryService.step(pipelineId, "veryinstableapi-call");
-                System.out.println("Step state for " + pipelineId + ": " + step.state());
+                var step = workflowQueryService.step(workflowId, "veryinstableapi-call");
+                System.out.println("Step state for " + workflowId + ": " + step.state());
                 assertEquals("SUCCESS", step.state());
             });
 
-            assertEquals("SUCCESS", workflowQueryService.find(pipelineId).orElseThrow().status());
+            assertEquals("SUCCESS", workflowQueryService.find(workflowId).orElseThrow().status());
         }
 
         await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(500)).untilAsserted(() ->

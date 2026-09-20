@@ -89,6 +89,11 @@ public class WorkflowKafkaRetryConfiguration {
         try {
             StatusEvent event = mapper.readValue(String.valueOf(record.value()), StatusEvent.class);
             String step = failingStep(exception, event.step());
+            if (event.status() == Status.SUSPENDED) {
+                log.warn("Exhausted retries for already suspended workflow instance {} step '{}'; not publishing another SUSPENDED event: {}",
+                        event.workflowId(), step, rootMessage(exception));
+                return;
+            }
             log.warn("Exhausted retries for workflow instance {} step '{}'; suspending: {}",
                     event.workflowId(), step, rootMessage(exception));
             publisher.publish(StatusEvent.of(event.workflowId(), event.workflow(), step, Status.SUSPENDED,

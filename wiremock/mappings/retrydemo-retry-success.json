@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "scenarioName": "retry-success-demo",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "FAILED_ONCE",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/retrydemo/retry-success/success/.*"
+  },
+  "response": {
+    "status": 500,
+    "fixedDelayMilliseconds": 250,
+    "jsonBody": {
+      "source": "retrydemo",
+      "status": "ERROR-1"
+    }
+  }
+}
+

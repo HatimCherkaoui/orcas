@@ -42,13 +42,13 @@ function formatDateTime(value) {
  * (`{ async, retryEnabled, maxAttempts, delayMillis, overridden }`), and is
  * surfaced in the "Configuration" tab.
  */
-export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onReplayed }) {
+export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onReplayed }) {
   const [tab, setTab] = useState('overview');
   const [replaying, setReplaying] = useState(false);
 
-  const details = useLoad(() => api.step(pipelineId, step.stepName), [pipelineId, step.stepName]);
-  const context = useLoad(() => api.stepContext(pipelineId, step.stepName), [pipelineId, step.stepName]);
-  const logs = useLoad(() => api.stepLogs(pipelineId, step.stepName), [pipelineId, step.stepName]);
+  const details = useLoad(() => api.step(workflowId, step.stepName), [workflowId, step.stepName]);
+  const context = useLoad(() => api.stepContext(workflowId, step.stepName), [workflowId, step.stepName]);
+  const logs = useLoad(() => api.stepLogs(workflowId, step.stepName), [workflowId, step.stepName]);
 
   const retries = Number(step.retryCount) || 0;
   const effectiveStepConfig = details.data?.stepConfig || stepConfig;
@@ -58,7 +58,7 @@ export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onRepl
   async function replay() {
     setReplaying(true);
     try {
-      await api.replayStep(pipelineId, step.stepName);
+      await api.replayStep(workflowId, step.stepName);
       onReplayed?.();
     } finally {
       setReplaying(false);
@@ -217,4 +217,3 @@ export function StepDetailsPanel({ pipelineId, step, stepConfig, onClose, onRepl
     </aside>
   );
 }
-

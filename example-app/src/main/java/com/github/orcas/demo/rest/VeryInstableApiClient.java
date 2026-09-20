@@ -10,8 +10,8 @@ import org.springframework.web.service.annotation.GetExchange;
 
 @WorkflowRestClient(baseUrl = "${demo.veryinstableapi.base-url:http://localhost:8089}")
 public interface VeryInstableApiClient {
-    @WorkflowStep(value = "veryinstableapi-call", mapper = OrderIdMapper.class)
+    @WorkflowStep(value = "veryinstableapi-call", mapper = RetryScenarioMapper.class)
     @WorkflowCircuitBreaker(name = "veryinstableapi-call", fallback = FallbackStrategy.REPLAY)
-    @GetExchange("/veryinstableendpoint/{id}")
-    ResponseEntity<String> get(@PathVariable("id") String id);
+    @GetExchange("/veryinstableendpoint/{scenario}/{id}")
+    ResponseEntity<String> get(@PathVariable("scenario") String scenario, @PathVariable("id") String id);
 }

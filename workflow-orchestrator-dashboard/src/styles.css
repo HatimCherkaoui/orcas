@@ -1016,7 +1016,7 @@ button {
 }
 
 /* ==========================================================================
-   Graph dashboard - the main pipeline detail screen. Fixed, full-viewport,
+   Graph dashboard - the main workflow detail screen. Fixed, full-viewport,
    never scrolls as a page; only the graph canvas itself pans/zooms.
    ========================================================================== */
 

@@ -174,7 +174,9 @@ public final class WorkflowEngine {
             handleJoin(event);
             var routes = definition.matching(event);
             log.debug("Resolved {} matching route(s) for step='{}' status={}", routes.size(), event.step(), event.status());
-            if (routes.isEmpty() && definition.waitingFor(event) && event.status() != Status.RUNNING) {
+            if (routes.isEmpty() && definition.waitingFor(event)
+                    && event.status() != Status.RUNNING
+                    && event.status() != Status.SUSPENDED) {
                 log.debug("Step '{}' is waiting on a join partner; deferring", event.step());
                 throw new com.github.orcas.orchestrator.core.retry.WorkflowCriteriaNotMatchedException(event);
             }

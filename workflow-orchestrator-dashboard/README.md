@@ -12,8 +12,8 @@ npm run dev
 Set `VITE_API_URL` if the service API is not at `http://localhost:8080/api/orchestrator`.
 
 The dashboard provides:
-- pageable/filterable pipeline list
-- pipeline detail view
+- pageable/filterable workflow list
+- workflow detail view
 - GitLab-like clickable step graph
 - context and metadata tabs
 - execution logs

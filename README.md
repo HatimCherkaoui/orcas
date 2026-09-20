@@ -265,7 +265,7 @@ Global values are defaults; `steps.<alias>` overrides them for retryable workflo
 Errors are classified as `REPLAYABLE` or `SUSPEND`. Timeouts, connection failures and transient HTTP statuses such as 408, 425, 429 and 5xx are replayable by default. Non-replayable failures suspend the current activity. When retries are exhausted, the workflow is persisted as `SUSPENDED`. Suspended steps can be replayed from the dashboard or through:
 
 ```text
-POST /api/orchestrator/workflows/{pipelineId}/steps/{stepName}/replay
+POST /api/orchestrator/workflows/{workflowId}/steps/{stepName}/replay
 ```
 
 Workflow methods can also opt into a configurable circuit breaker:
@@ -313,10 +313,10 @@ Traces are exported over OTLP/HTTP (`OTEL_EXPORTER_OTLP_ENDPOINT`, default `http
 Endpoints are rooted at `/api/orchestrator` by default:
 
 - `GET /workflows` with workflow/status/stepStatus/metadata/date-range filters and pagination
-- `GET /workflows/{pipelineId}`
-- `GET /workflows/{pipelineId}/steps`
-- `GET /workflows/{pipelineId}/context`
-- `GET /workflows/{pipelineId}/metadata`
+- `GET /workflows/{workflowId}`
+- `GET /workflows/{workflowId}/steps`
+- `GET /workflows/{workflowId}/context`
+- `GET /workflows/{workflowId}/metadata`
 - log endpoints for workflow, step, context and metadata
 - PATCH/PUT endpoints for operational modifications
 - `/kafka/topics` and `/kafka/consumer-groups` when Kafka is available
@@ -325,10 +325,10 @@ Endpoints are rooted at `/api/orchestrator` by default:
 
 The dashboard (`workflow-orchestrator-dashboard/`) is a React + Vite single-page app, orca-themed (black / white / ocean blue), built around one idea: **the workflow graph is the product**.
 
-- Pipeline execution renders as an interactive, GitHub-Actions-style graph — sequential steps form the main path, parallel branches appear as separate lanes, async steps are visually distinct, and joins are explicit.
+- Workflow execution renders as an interactive, GitHub-Actions-style graph — sequential steps form the main path, parallel branches appear as separate lanes, async steps are visually distinct, and joins are explicit.
 - Click any step to open a floating panel with its overview, input, output and audit log, without ever leaving or scrolling the graph. Failed/suspended steps expose a one-click **Replay step** action.
 - The collapsible sidebar (hover to reveal the toggle arrow) doubles as the full navbar and houses the Orcas trademark/footer.
-- The Pipelines list and Kafka admin pages are compact, paginated/filterable (including a date-range picker), and built on a small shared form-field library with Material-style floating labels.
+- The workflows list and Kafka admin pages are compact, paginated/filterable (including a date-range picker), and built on a small shared form-field library with Material-style floating labels.
 
 ## Contributing
 

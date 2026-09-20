@@ -1,51 +1,59 @@
 import { useState } from 'react';
 import { Boxes, ChevronLeft, ChevronRight, Waves } from 'lucide-react';
 import { Footer } from './Footer';
-import logoUrl from '../../assets/logo.svg';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Pipelines', icon: Boxes },
+  { path: '/', label: 'Workflows', icon: Boxes },
   { path: '/kafka', label: 'Kafka', icon: Waves },
 ];
 
 /**
- * Application chrome for the "list-style" pages (pipeline list, Kafka admin): a
- * full navbar sidebar (brand, nav links, footer trademark) plus a scrollable main
- * content area. The sidebar can be collapsed to an icon rail via the hover-reveal
- * chevron toggle. The interactive graph page (`PipelineDetailPage`) intentionally
- * does not use this shell - it owns the full viewport instead.
+ * Shared application chrome for list-style pages (workflow list and Kafka admin).
+ * The sidebar can collapse down to icons only, while the main area renders the page
+ * content provided by the caller.
  */
 export function Shell({ page, navigate, children }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="shell">
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-head">
-          <img src={logoUrl} alt="Brand Logo" className="brand-mark" />
-          <button
-            className="sidebar-collapse"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+    <div className={`shell ${collapsed ? 'is-collapsed' : ''}`}>
+      <aside className="sidebar">
+        <div className="sidebar-top">
+          <div className="brand">
+            <div className="brand-mark">ORCAS</div>
+            {!collapsed && (
+              <div>
+                <strong>Workflow Orchestrator</strong>
+                <p>Operations dashboard</p>
+              </div>
+            )}
+          </div>
+          <button className="icon-button sidebar-toggle" onClick={() => setCollapsed((current) => !current)} aria-label="Toggle sidebar">
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
-        <nav>
-          {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
-            <button
-              key={path}
-              className={`nav-item ${page === path ? 'active' : ''}`}
-              onClick={() => navigate(path)}
-            >
-              <Icon size={17} />
-              <span>{label}</span>
-            </button>
-          ))}
+
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map(({ path: itemPath, label, icon: Icon }) => {
+            const active = page === itemPath;
+            return (
+              <button
+                key={itemPath}
+                className={`sidebar-link ${active ? 'active' : ''}`}
+                onClick={() => navigate?.(itemPath)}
+                title={collapsed ? label : undefined}
+              >
+                <Icon size={16} />
+                {!collapsed && <span>{label}</span>}
+              </button>
+            );
+          })}
         </nav>
+
         <Footer />
       </aside>
-      <main className="main">{children}</main>
+
+      <main className="main-content">{children}</main>
     </div>
   );
 }

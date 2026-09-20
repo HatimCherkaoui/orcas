@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "scenarioName": "veryinstableapi-recovery",
+  "requiredScenarioState": "RECOVERED",
+  "newScenarioState": "RECOVERED",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/veryinstableendpoint/circuit-breaker/.*"
+  },
+  "response": {
+    "status": 200,
+    "fixedDelayMilliseconds": 250,
+    "jsonBody": {
+      "source": "veryinstableapi",
+      "status": "OK"
+    }
+  }
+}
+

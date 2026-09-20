@@ -1,84 +1,89 @@
 import { useState } from 'react';
-import { ArrowLeft, ListTree, RefreshCw, ScrollText, Tags } from 'lucide-react';
+import { ArrowLeft, Database, FileText, RefreshCw, ScrollText } from 'lucide-react';
 import { api } from '../api';
 import { useLoad } from '../hooks/useLoad';
+import { Loading, ErrorState, Empty } from '../components/common/States';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { Loading, ErrorState } from '../components/common/States';
 import { WorkflowGraph } from '../components/graph/WorkflowGraph';
 import { StepDetailsPanel } from '../components/graph/StepDetailsPanel';
 import { WorkflowInfoPanel } from '../components/graph/WorkflowInfoPanel';
 
 const INFO_TABS = [
-  { id: 'context', label: 'Context', icon: ListTree, subtitle: 'Original business context' },
-  { id: 'metadata', label: 'Metadata', icon: Tags, subtitle: 'Technical key/value data' },
-  { id: 'logs', label: 'Audit log', icon: ScrollText, subtitle: 'Full audit trail' },
+  { id: 'context', label: 'Context', icon: FileText },
+  { id: 'metadata', label: 'Metadata', icon: Database },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
-/**
- * The dashboard's main screen: a full-viewport, non-scrolling interactive workflow
- * graph. Node clicks and the top-bar info tabs both open a floating panel over the
- * graph (never a page navigation or a full-page scroll) so the graph stays the one
- * constant, dominant point of reference - only the graph canvas itself pans/zooms
- * when a pipeline has more steps than fit on screen.
- */
 export default function PipelineDetailPage({ id, navigate }) {
-  const pipelineId = id && id !== 'undefined' ? id : null;
+  const workflowId = id && id !== 'undefined' ? id : null;
 
-  const workflow = useLoad(() => (pipelineId ? api.workflow(pipelineId) : Promise.reject(new Error('Missing pipeline id'))), [pipelineId]);
-  const steps = useLoad(() => (pipelineId ? api.steps(pipelineId) : null), [pipelineId]);
-  const definition = useLoad(() => (workflow.data ? api.definition(workflow.data.workflow) : null), [workflow.data?.workflow]);
-
-  const context = useLoad(() => (pipelineId ? api.context(pipelineId) : null), [pipelineId]);
-  const metadata = useLoad(() => (pipelineId ? api.metadata(pipelineId) : null), [pipelineId]);
-  const auditLog = useLoad(() => (pipelineId ? api.workflowLogs(pipelineId) : null), [pipelineId]);
-  const infoLoaders = { context, metadata, logs: auditLog };
-  const infoValues = { context: context.data?.context, metadata: metadata.data?.values, logs: auditLog.data };
+  const workflow = useLoad(() => (workflowId ? api.workflow(workflowId) : null), [workflowId]);
+  const steps = useLoad(() => (workflowId ? api.steps(workflowId) : null), [workflowId]);
+  const definition = useLoad(() => (workflow.data?.workflow ? api.definition(workflow.data.workflow) : null), [workflow.data?.workflow]);
+  const context = useLoad(() => (workflowId ? api.context(workflowId) : null), [workflowId]);
+  const metadata = useLoad(() => (workflowId ? api.metadata(workflowId) : null), [workflowId]);
+  const auditLog = useLoad(() => (workflowId ? api.workflowLogs(workflowId) : null), [workflowId]);
 
   const [selectedStep, setSelectedStep] = useState(null);
   const [infoTab, setInfoTab] = useState(null);
 
-  function selectStep(step) {
-    setInfoTab(null);
-    setSelectedStep(step);
-  }
-
-  function openInfoTab(id) {
-    setSelectedStep(null);
-    setInfoTab((current) => (current === id ? null : id));
-  }
+  const stepConfigs = definition.data?.stepConfigs || {};
+  const activeInfoTab = INFO_TABS.find((tab) => tab.id === infoTab) || null;
+  const infoLoads = {
+    context: { ...context, data: context.data?.context },
+    metadata: { ...metadata, data: metadata.data?.values },
+    logs: auditLog,
+  };
 
   function refresh() {
     workflow.reload();
     steps.reload();
+    definition.reload();
+    context.reload();
+    metadata.reload();
+    auditLog.reload();
   }
 
-  if (workflow.loading) return <CenteredState><Loading /></CenteredState>;
-  if (workflow.error) return <CenteredState><ErrorState error={workflow.error} retry={workflow.reload} /></CenteredState>;
+  function selectStep(step) {
+    setSelectedStep(step);
+    if (step) setInfoTab(null);
+  }
 
-  const activeInfoTab = INFO_TABS.find((tab) => tab.id === infoTab);
-  // Static per-step configuration (async flag + effective retry policy) returned
-  // alongside the routing graph by `/workflows/definitions/{workflow}`.
-  const stepConfigs = definition.data?.stepConfigs || {};
+  function openInfoTab(tabId) {
+    setSelectedStep(null);
+    setInfoTab((current) => (current === tabId ? null : tabId));
+  }
+
+  if (!workflowId) {
+    return (
+      <div className="graph-page">
+        <div className="graph-empty">
+          <Empty title="Missing workflow id" text="Go back to the workflow list and open a workflow to inspect its execution graph." />
+          <button className="button" onClick={() => navigate('/')}>Back to workflows</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="graph-page">
       <header className="graph-topbar">
-        <button className="icon-button" onClick={() => navigate('/')} aria-label="Back to pipelines">
-          <ArrowLeft size={16} />
-        </button>
-
         <div className="graph-topbar-title">
-          <strong>{workflow.data.workflow}</strong>
-          <span className="mono">{pipelineId}</span>
+          <button className="icon-button" onClick={() => navigate('/')} aria-label="Back to workflows">
+            <ArrowLeft size={16} />
+          </button>
+          <div>
+            <strong>{workflow.data?.workflow || 'Workflow'}</strong>
+            <span className="mono">{workflowId}</span>
+          </div>
         </div>
 
-        <StatusBadge value={workflow.data.status} />
-
+        {workflow.data?.status && <StatusBadge value={workflow.data.status} />}
         <span className="graph-topbar-count">{steps.data?.length || 0} steps</span>
 
         <nav className="graph-topbar-tabs">
-          {INFO_TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={infoTab === id ? 'active' : ''} onClick={() => openInfoTab(id)}>
+          {INFO_TABS.map(({ id: tabId, label, icon: Icon }) => (
+            <button key={tabId} className={infoTab === tabId ? 'active' : ''} onClick={() => openInfoTab(tabId)}>
               <Icon size={14} />
               {label}
             </button>
@@ -90,14 +95,16 @@ export default function PipelineDetailPage({ id, navigate }) {
         </button>
       </header>
 
-      <div className="graph-canvas">
-        {steps.loading ? (
+      <div className="graph-stage">
+        {workflow.loading || steps.loading ? (
           <Loading />
+        ) : workflow.error ? (
+          <ErrorState error={workflow.error} retry={workflow.reload} />
         ) : steps.error ? (
           <ErrorState error={steps.error} retry={steps.reload} />
         ) : (
           <WorkflowGraph
-            steps={steps.data}
+            steps={steps.data || []}
             definition={definition.data}
             selectedStepName={selectedStep?.stepName}
             onSelectStep={selectStep}
@@ -107,7 +114,7 @@ export default function PipelineDetailPage({ id, navigate }) {
 
       {selectedStep && (
         <StepDetailsPanel
-          pipelineId={pipelineId}
+          workflowId={workflowId}
           step={selectedStep}
           stepConfig={stepConfigs[selectedStep.stepName]}
           onClose={() => setSelectedStep(null)}
@@ -115,20 +122,15 @@ export default function PipelineDetailPage({ id, navigate }) {
         />
       )}
 
-      {activeInfoTab && (
+      {!selectedStep && activeInfoTab && (
         <WorkflowInfoPanel
           tabId={activeInfoTab.id}
           title={activeInfoTab.label}
-          subtitle={activeInfoTab.subtitle}
-          load={{ ...infoLoaders[activeInfoTab.id], data: infoValues[activeInfoTab.id] }}
+          subtitle={workflow.data?.workflow || workflowId}
+          load={infoLoads[activeInfoTab.id]}
           onClose={() => setInfoTab(null)}
         />
       )}
     </div>
   );
 }
-
-function CenteredState({ children }) {
-  return <div className="graph-page graph-page-centered">{children}</div>;
-}
-
