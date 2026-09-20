@@ -45,6 +45,7 @@ function formatDateTime(value) {
 export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onReplayed }) {
   const [tab, setTab] = useState('overview');
   const [replaying, setReplaying] = useState(false);
+  const [replayError, setReplayError] = useState(null);
 
   const details = useLoad(() => api.step(workflowId, step.stepName), [workflowId, step.stepName]);
   const context = useLoad(() => api.stepContext(workflowId, step.stepName), [workflowId, step.stepName]);
@@ -57,12 +58,15 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
   async function replay() {
     setReplaying(true);
+    setReplayError(null);
     try {
       await api.replayStep(workflowId, step.stepName);
       details.reload();
       context.reload();
       logs.reload();
       onReplayed?.();
+    } catch (error) {
+      setReplayError(error);
     } finally {
       setReplaying(false);
     }
@@ -194,9 +198,9 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
             <Loading />
           ) : logs.error ? (
             <ErrorState error={logs.error} />
-          ) : logs.data?.length ? (
+          ) : (Array.isArray(logs.data) ? logs.data : logs.data?.content || logs.data?.items || []).length ? (
             <div className="logs">
-              {logs.data.map((log) => (
+              {(Array.isArray(logs.data) ? logs.data : logs.data?.content || logs.data?.items || []).map((log) => (
                 <div className={`log-row ${log.action === 'RETRY' ? 'log-row-retry' : ''}`} key={log.id}>
                   <time>{new Date(log.dateCreated).toLocaleString()}</time>
                   <strong>{log.action}</strong>
@@ -211,6 +215,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
       {REPLAYABLE_STATES.includes(String(step.state).toUpperCase()) && (
         <footer className="floating-panel-footer">
+          {replayError && <div className="inline-notice danger panel-notice">Replay failed: {replayError.message}</div>}
           <button className="button primary" onClick={replay} disabled={replaying}>
             <RotateCcw size={15} />
             {replaying ? 'Replaying…' : 'Replay step'}

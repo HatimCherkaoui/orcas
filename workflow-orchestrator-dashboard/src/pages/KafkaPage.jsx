@@ -1,171 +1,100 @@
-import { useState } from 'react';
-import { Activity, Database, Layers3, RefreshCw, Server, TerminalSquare, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Activity, Database, Layers3, RefreshCw, Server, TerminalSquare, Users, X } from 'lucide-react';
 import { api } from '../api';
 import { useLoad } from '../hooks/useLoad';
 import { Shell } from '../components/layout/Shell';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Card, Loading, Empty } from '../components/common/States';
+import { Card, Loading, Empty, ErrorState } from '../components/common/States';
 import { SearchBox, StatCard } from '../components/common/Inputs';
 import { StatusBadge } from '../components/common/StatusBadge';
 
-/**
- * Kafka administration page: browse topics and inspect consumer group offsets.
- * The whole view is sized to fit a single screen - topic/group details open as
- * floating cards over the layout instead of pushing content further down, and
- * only the topic/group lists scroll internally if they overflow their panel.
- */
 export default function KafkaPage({ navigate }) {
-  const topics = useLoad(api.topics, []);
-  const groups = useLoad(api.consumerGroups, []);
+  const topics = useLoad(api.topics, [], { interval: 8000 });
+  const groups = useLoad(api.consumerGroups, [], { interval: 8000 });
   const [query, setQuery] = useState('');
-  const [topic, setTopic] = useState(null);
-  const [group, setGroup] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [detailError, setDetailError] = useState(null);
 
-  const filteredTopics = (topics.data || []).filter((name) => name.toLowerCase().includes(query.toLowerCase()));
+  const topicRows = Array.isArray(topics.data) ? topics.data : topics.data?.topics || topics.data?.content || [];
+  const groupRows = Array.isArray(groups.data) ? groups.data : groups.data?.groups || groups.data?.content || [];
+  const filteredTopics = useMemo(() => topicRows.map((item) => typeof item === 'string' ? item : item.name).filter(Boolean).filter((name) => String(name).toLowerCase().includes(query.toLowerCase())), [topics.data, query]);
+  const groupCount = groupRows.length;
+  const connectionHealthy = !topics.error && !groups.error;
+
+  async function openTopic(name) {
+    setDetailError(null);
+    try { setSelected({ type: 'topic', loading: true, name }); setSelected({ type: 'topic', data: await api.topic(name), name }); }
+    catch (error) { setSelected(null); setDetailError(error); }
+  }
+
+  async function openGroup(groupId) {
+    setDetailError(null);
+    try { setSelected({ type: 'group', loading: true, groupId }); setSelected({ type: 'group', data: await api.consumerGroup(groupId), groupId }); }
+    catch (error) { setSelected(null); setDetailError(error); }
+  }
+
+  function refresh() { topics.reload(); groups.reload(); }
 
   return (
     <Shell page="/kafka" navigate={navigate}>
-      <div className="kafka-page">
+      <div className="page kafka-page">
         <PageHeader
-          eyebrow="Runtime administration"
-          title="Kafka"
-          subtitle="Inspect topics, consumer groups and offsets"
-          actions={
-            <button
-              className="button"
-              onClick={() => {
-                topics.reload();
-                groups.reload();
-              }}
-            >
-              <RefreshCw size={15} />
-              Refresh
-            </button>
-          }
+          eyebrow="Operations / Kafka"
+          title="Kafka runtime"
+          subtitle="Topics, consumer groups and offsets in one compact view."
+          actions={<button className="button" onClick={refresh}><RefreshCw size={15} className={topics.loading || groups.loading ? 'spin' : ''} />Refresh</button>}
         />
 
-        <div className="kafka-body">
-          <div className="stats-grid">
-            <StatCard label="Topics" value={topics.data?.length ?? '—'} icon={Layers3} />
-            <StatCard label="Consumer groups" value={groups.data?.length ?? '—'} icon={Server} />
-            <StatCard label="Connection" value={topics.error || groups.error ? 'Degraded' : 'Healthy'} icon={Activity} />
-          </div>
-
-          <div className="kafka-layout">
-            <Card className="kafka-list">
-              <div className="section-heading">
-                <h2>Topics</h2>
-                <span className="count">{filteredTopics.length}</span>
-              </div>
-              <SearchBox value={query} onChange={setQuery} placeholder="Filter topics" />
-              <div className="kafka-scroll">
-                {topics.loading ? (
-                  <Loading />
-                ) : filteredTopics.length ? (
-                  <div className="resource-list">
-                    {filteredTopics.map((name) => (
-                      <button
-                        className={`resource ${topic?.name === name ? 'active' : ''}`}
-                        key={name}
-                        onClick={() => api.topic(name).then(setTopic)}
-                      >
-                        <span className="resource-icon">
-                          <TerminalSquare size={16} />
-                        </span>
-                        <strong title={name}>{name}</strong>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <Empty title="No topics" />
-                )}
-              </div>
-            </Card>
-
-            <Card className="kafka-groups">
-              <div className="section-heading">
-                <h2>Consumer groups</h2>
-                <span className="count">{groups.data?.length || 0}</span>
-              </div>
-              <div className="kafka-scroll">
-                {groups.loading ? (
-                  <Loading />
-                ) : groups.data?.length ? (
-                  <div className="group-table">
-                    <div className="group-head">
-                      <span>Group</span>
-                      <span>State</span>
-                      <span>Partitions</span>
-                    </div>
-                    {groups.data.map((g) => (
-                      <button
-                        className={`group-row ${group?.groupId === g.groupId ? 'active' : ''}`}
-                        key={g.groupId}
-                        onClick={() => api.consumerGroup(g.groupId).then(setGroup)}
-                      >
-                        <strong className="mono" title={g.groupId}>{g.groupId}</strong>
-                        <StatusBadge value={g.state} />
-                        <span>{Object.keys(g.offsets || {}).length}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <Empty title="No consumer groups" />
-                )}
-              </div>
-            </Card>
-          </div>
+        <div className="stats-grid">
+          <StatCard label="Topics" value={topicRows.length || (topics.loading ? '—' : 0)} icon={Layers3} />
+          <StatCard label="Consumer groups" value={groupCount || (groups.loading ? '—' : 0)} icon={Users} />
+          <StatCard label="Connection" value={connectionHealthy ? 'Healthy' : 'Degraded'} icon={Activity} tone={connectionHealthy ? 'success' : 'danger'} />
+          <StatCard label="API base" value={api.baseUrl} icon={Server} />
         </div>
 
-        {topic && (
-          <aside className="floating-panel kafka-floating">
-            <header className="floating-panel-header">
-              <div>
-                <div className="eyebrow">Topic</div>
-                <h2 className="mono">{topic.name}</h2>
-              </div>
-              <StatusBadge value="SUCCESS" />
-              <button className="icon-button" onClick={() => setTopic(null)} aria-label="Close">
-                <X size={16} />
-              </button>
-            </header>
-            <div className="floating-panel-body">
-              <div className="stats-grid compact">
-                <StatCard label="Partitions" value={topic.partitions} icon={Layers3} />
-                <StatCard label="Replication" value={topic.replicationFactor} icon={Database} />
-              </div>
-            </div>
-          </aside>
-        )}
+        {detailError && <div className="inline-notice danger"><X size={14} /> {detailError.message}</div>}
 
-        {group && (
-          <aside className="floating-panel kafka-floating">
-            <header className="floating-panel-header">
-              <div>
-                <div className="eyebrow">Consumer group</div>
-                <h2 className="mono">{group.groupId}</h2>
-              </div>
-              <StatusBadge value={group.state} />
-              <button className="icon-button" onClick={() => setGroup(null)} aria-label="Close">
-                <X size={16} />
-              </button>
-            </header>
-            <div className="floating-panel-body">
-              {Object.entries(group.offsets || {}).length ? (
-                Object.entries(group.offsets || {}).map(([key, value]) => (
-                  <div className="kv-row" key={key}>
-                    <strong className="mono" title={key}>{key}</strong>
-                    <span title={String(value)}>{value}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="muted-note">No offsets recorded for this group.</p>
-              )}
+        <div className="kafka-layout">
+          <Card className="kafka-list">
+            <div className="section-heading"><div><div className="eyebrow">Event streams</div><h2>Topics</h2></div><span className="count">{filteredTopics.length}</span></div>
+            <SearchBox label="Topic search" value={query} onChange={setQuery} placeholder="Filter topics…" />
+            <div className="kafka-scroll">
+              {topics.loading && !topics.data ? <Loading /> : topics.error && !topics.data ? <ErrorState error={topics.error} retry={topics.reload} /> : filteredTopics.length ? (
+                <div className="resource-list">
+                  {filteredTopics.map((name) => <button className={`resource ${selected?.name === name ? 'active' : ''}`} key={name} onClick={() => openTopic(name)}>
+                    <span className="resource-icon"><TerminalSquare size={16} /></span><span className="resource-copy"><strong title={name}>{name}</strong><small>Kafka topic</small></span><span className="resource-chevron">›</span>
+                  </button>)}
+                </div>
+              ) : <Empty title="No topics" text="No topic matches the current filter." />}
             </div>
-          </aside>
-        )}
+          </Card>
+
+          <Card className="kafka-groups">
+            <div className="section-heading"><div><div className="eyebrow">Consumers</div><h2>Consumer groups</h2></div><span className="count">{groupCount}</span></div>
+            <div className="kafka-scroll">
+              {groups.loading && !groups.data ? <Loading /> : groups.error && !groups.data ? <ErrorState error={groups.error} retry={groups.reload} /> : groupRows.length ? (
+                <div className="group-table">
+                  <div className="group-head"><span>Group</span><span>State</span><span>Partitions</span></div>
+                  {groupRows.map((group) => <button className={`group-row ${selected?.groupId === group.groupId ? 'active' : ''}`} key={group.groupId} onClick={() => openGroup(group.groupId)}>
+                    <span className="group-name"><strong className="mono" title={group.groupId}>{group.groupId}</strong><small>consumer group</small></span><StatusBadge value={group.state} /><span className="partition-count">{Object.keys(group.offsets || {}).length}</span>
+                  </button>)}
+                </div>
+              ) : <Empty title="No consumer groups" />}
+            </div>
+          </Card>
+        </div>
+
+        {selected && <aside className="floating-panel kafka-floating">
+          <header className="floating-panel-header">
+            <div><div className="eyebrow">{selected.type === 'topic' ? 'Topic' : 'Consumer group'}</div><h2 className="mono">{selected.name || selected.groupId}</h2></div>
+            {selected.data && selected.type === 'group' && <StatusBadge value={selected.data.state} />}
+            <button className="icon-button" onClick={() => setSelected(null)} aria-label="Close"><X size={16} /></button>
+          </header>
+          <div className="floating-panel-body">
+            {selected.loading ? <Loading /> : selected.type === 'topic' ? <div className="stats-grid compact"><StatCard label="Partitions" value={selected.data?.partitions ?? '—'} icon={Layers3} /><StatCard label="Replication" value={selected.data?.replicationFactor ?? '—'} icon={Database} /></div> : Object.entries(selected.data?.offsets || {}).length ? Object.entries(selected.data.offsets).map(([key, value]) => <div className="kv-row" key={key}><strong className="mono" title={key}>{key}</strong><span>{value}</span></div>) : <p className="muted-note">No offsets recorded for this group.</p>}
+          </div>
+        </aside>}
       </div>
     </Shell>
   );
 }
-

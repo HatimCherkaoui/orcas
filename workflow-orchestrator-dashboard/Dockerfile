@@ -2,7 +2,7 @@
 FROM node:24.20.0-alpine3.24 AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --ignore-scripts --no-audit --no-fund
+RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 RUN npm run build
 

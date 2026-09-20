@@ -1,43 +1,31 @@
 import { RefreshCw, AlertCircle, Inbox } from 'lucide-react';
 
-/** Simple bordered content container used throughout the dashboard. */
 export function Card({ children, className = '' }) {
   return <section className={`card ${className}`}>{children}</section>;
 }
 
-/** Centered spinner shown while a `useLoad` request is in flight. */
 export function Loading() {
-  return (
-    <div className="state-card">
-      <RefreshCw className="spin" size={20} />
-      <span>Loading…</span>
-    </div>
-  );
+  return <div className="state-card"><RefreshCw className="spin" size={19} /><span>Loading…</span></div>;
 }
 
-/** Error placeholder with an optional retry action, for failed `useLoad` requests. */
 export function ErrorState({ error, retry }) {
   return (
     <div className="state-card error">
-      <AlertCircle size={20} />
+      <AlertCircle size={21} />
       <div>
         <strong>Unable to load data</strong>
         <p>{error?.message || 'Unexpected error'}</p>
+        {error?.endpoint && <p className="mono">{error.status ? `${error.status} · ` : ''}{error.endpoint}</p>}
       </div>
-      {retry && (
-        <button className="button" onClick={retry}>
-          Retry
-        </button>
-      )}
+      {retry && <button className="button" onClick={retry}><RefreshCw size={14} /> Retry</button>}
     </div>
   );
 }
 
-/** Placeholder for empty lists/collections. */
 export function Empty({ icon: Icon = Inbox, title = 'Nothing here', text = '' }) {
   return (
     <div className="empty">
-      <Icon size={28} />
+      <Icon size={27} />
       <strong>{title}</strong>
       {text && <p>{text}</p>}
     </div>

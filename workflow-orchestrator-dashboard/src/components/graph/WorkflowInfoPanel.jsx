@@ -38,10 +38,11 @@ export function WorkflowInfoPanel({ tabId, title, subtitle, load, onClose }) {
 }
 
 function AuditLogList({ logs }) {
-  if (!logs?.length) return <Empty title="No audit log entries" />;
+  const entries = Array.isArray(logs) ? logs : logs?.content || logs?.items || [];
+  if (!entries.length) return <Empty title="No audit log entries" />;
   return (
     <div className="logs">
-      {logs.map((log) => (
+      {entries.map((log) => (
         <div className="log-row" key={log.id}>
           <time>{new Date(log.dateCreated).toLocaleString()}</time>
           <strong>{log.action}</strong>
