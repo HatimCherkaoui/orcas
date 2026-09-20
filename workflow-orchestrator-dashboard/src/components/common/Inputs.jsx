@@ -5,13 +5,13 @@ export function JsonViewer({ value }) {
   return <pre className="json-viewer">{JSON.stringify(value ?? {}, null, 2)}</pre>;
 }
 
-function Field({ label, placeholder, active, icon: Icon, children }) {
+function Field({ label, placeholder, active, showPlaceholder, icon: Icon, children }) {
   return (
     <label className={`field ${active ? 'active' : ''} ${Icon ? 'has-icon' : ''}`}>
       {Icon && <Icon className="field-icon" size={15} />}
       {children}
       <span className="field-label">{label}</span>
-      {placeholder && <span className="field-placeholder">{placeholder}</span>}
+      {placeholder && showPlaceholder && <span className="field-placeholder">{placeholder}</span>}
     </label>
   );
 }
@@ -19,10 +19,10 @@ function Field({ label, placeholder, active, icon: Icon, children }) {
 export function TextField({ label, value, onChange, icon, placeholder = 'Search…' }) {
   const [focused, setFocused] = useState(false);
   return (
-    <Field label={label} placeholder={placeholder} icon={icon} active={focused || !!value}>
+    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} icon={icon} active={focused || !!value}>
       <input
         value={value}
-        placeholder={focused || value ? placeholder : ''}
+        placeholder=""
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -34,8 +34,9 @@ export function TextField({ label, value, onChange, icon, placeholder = 'Search�
 export function SelectField({ label, value, onChange, options, placeholder = 'Any state' }) {
   const [focused, setFocused] = useState(false);
   return (
-    <Field label={label} placeholder={placeholder} active={focused || !!value}>
+    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
       <select
+        className={!value ? 'field-select-empty' : ''}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
@@ -51,7 +52,7 @@ export function SelectField({ label, value, onChange, options, placeholder = 'An
 export function DateField({ label, value, onChange, placeholder = 'Pick a date' }) {
   const [focused, setFocused] = useState(false);
   return (
-    <Field label={label} placeholder={placeholder} active={focused || !!value}>
+    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
       <input
         type="date"
         value={value}
@@ -65,6 +66,27 @@ export function DateField({ label, value, onChange, placeholder = 'Pick a date' 
 
 export function SearchBox({ value, onChange, label = 'Search', placeholder = 'Search…' }) {
   return <TextField label={label} value={value} onChange={onChange} icon={Search} placeholder={placeholder} />;
+}
+
+export function AutoRefresh({ enabled, onEnabledChange, interval, onIntervalChange, options = [3000, 5000, 8000, 10000, 30000, 60000] }) {
+  const format = (ms) => ms < 60000 ? `${ms / 1000}s` : `${ms / 60000}m`;
+  return (
+    <div className="auto-refresh" title={enabled ? `Auto refresh every ${format(interval)}` : 'Auto refresh is off'}>
+      <button
+        type="button"
+        className={`refresh-toggle ${enabled ? 'on' : ''}`}
+        role="switch"
+        aria-checked={enabled}
+        onClick={() => onEnabledChange(!enabled)}
+      >
+        <span className="refresh-toggle-knob" />
+        <span>Auto</span>
+      </button>
+      <select value={interval} onChange={(e) => onIntervalChange(Number(e.target.value))} disabled={!enabled} aria-label="Refresh frequency">
+        {options.map((value) => <option key={value} value={value}>{format(value)}</option>)}
+      </select>
+    </div>
+  );
 }
 
 export function StatCard({ label, value, icon: Icon, tone = 'default' }) {

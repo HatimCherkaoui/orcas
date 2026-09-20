@@ -5,7 +5,7 @@ import { useLoad } from '../hooks/useLoad';
 import { Shell } from '../components/layout/Shell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, Loading, ErrorState, Empty } from '../components/common/States';
-import { SearchBox, SelectField, DateField, StatCard, Pagination } from '../components/common/Inputs';
+import { SearchBox, SelectField, DateField, StatCard, Pagination, AutoRefresh } from '../components/common/Inputs';
 import { StatusBadge } from '../components/common/StatusBadge';
 
 const STATUS_OPTIONS = ['STARTED', 'RUNNING', 'SUCCESS', 'FAILED', 'SUSPENDED', 'SKIPPED'];
@@ -48,6 +48,8 @@ export default function PipelineListPage({ navigate }) {
   const [autoPageSize, setAutoPageSize] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [sort, setSort] = useState({ key: 'created', direction: 'desc' });
+  const [autoReload, setAutoReload] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000);
   const [batchReplay, setBatchReplay] = useState({ running: false, result: null, error: null });
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function PipelineListPage({ navigate }) {
     size: filters.size,
   }), [filters]);
 
-  const load = useLoad(() => api.workflows(query), [JSON.stringify(query)], { interval: 8000 });
+  const load = useLoad(() => api.workflows(query), [JSON.stringify(query)], { interval: autoReload ? refreshInterval : 0 });
   const rawRows = load.data?.content || [];
   const rows = sortRows(rawRows, sort.key, sort.direction);
   const suspendedFilterActive = filters.status === 'SUSPENDED' || filters.stepStatus === 'SUSPENDED';
@@ -117,6 +119,7 @@ export default function PipelineListPage({ navigate }) {
           subtitle="Monitor execution state, inspect steps and replay suspended work."
           actions={<>
             {suspendedFilterActive && <button className="button primary" onClick={replaySuspended} disabled={batchReplay.running || !(load.data?.totalElements > 0)}><RotateCcw size={15} />{batchReplay.running ? 'Replaying…' : 'Replay suspended'}</button>}
+            <AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} />
             <button className="button" onClick={load.reload}><RefreshCw size={15} className={load.loading ? 'spin' : ''} />Refresh</button>
           </>}
         />
@@ -131,7 +134,7 @@ export default function PipelineListPage({ navigate }) {
         <Card className={`workflow-toolbar ${filtersOpen ? 'expanded' : ''}`}>
           <div className="toolbar-topline">
             <button className={`toolbar-filter ${filtersOpen ? 'active' : ''}`} onClick={() => setFiltersOpen((value) => !value)}><Filter size={15} /> Filters {activeFilterCount > 0 && <span>{activeFilterCount}</span>}</button>
-            <div className="toolbar-summary">{load.data?.totalElements ?? '—'} executions · auto refresh 8s</div>
+            <div className="toolbar-summary">{load.data?.totalElements ?? '—'} executions · {autoReload ? `refresh ${refreshInterval / 1000}s` : 'manual refresh'}</div>
             {activeFilterCount > 0 && <button className="link-button" onClick={clearFilters}><X size={14} /> Clear</button>}
           </div>
           {filtersOpen && <div className="filter-grid compact-grid">

@@ -5,12 +5,14 @@ import { useLoad } from '../hooks/useLoad';
 import { Shell } from '../components/layout/Shell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, Loading, Empty, ErrorState } from '../components/common/States';
-import { SearchBox, StatCard } from '../components/common/Inputs';
+import { SearchBox, StatCard, AutoRefresh } from '../components/common/Inputs';
 import { StatusBadge } from '../components/common/StatusBadge';
 
 export default function KafkaPage({ navigate }) {
-  const topics = useLoad(api.topics, [], { interval: 8000 });
-  const groups = useLoad(api.consumerGroups, [], { interval: 8000 });
+  const [autoReload, setAutoReload] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000);
+  const topics = useLoad(api.topics, [autoReload, refreshInterval], { interval: autoReload ? refreshInterval : 0 });
+  const groups = useLoad(api.consumerGroups, [autoReload, refreshInterval], { interval: autoReload ? refreshInterval : 0 });
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(null);
   const [detailError, setDetailError] = useState(null);
@@ -42,7 +44,7 @@ export default function KafkaPage({ navigate }) {
           eyebrow="Operations / Kafka"
           title="Kafka runtime"
           subtitle="Topics, consumer groups and offsets in one compact view."
-          actions={<button className="button" onClick={refresh}><RefreshCw size={15} className={topics.loading || groups.loading ? 'spin' : ''} />Refresh</button>}
+          actions={<><AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} /><button className="button" onClick={refresh}><RefreshCw size={15} className={topics.loading || groups.loading ? 'spin' : ''} />Refresh</button></>}
         />
 
         <div className="stats-grid">

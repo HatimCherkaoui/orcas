@@ -5,6 +5,7 @@ import { useLoad } from '../hooks/useLoad';
 import { Loading, ErrorState, Empty } from '../components/common/States';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Tabs } from '../components/layout/Tabs';
+import { AutoRefresh } from '../components/common/Inputs';
 import { WorkflowGraph } from '../components/graph/WorkflowGraph';
 import { StepDetailsPanel } from '../components/graph/StepDetailsPanel';
 import { WorkflowInfoPanel } from '../components/graph/WorkflowInfoPanel';
@@ -19,15 +20,17 @@ const INFO_TABS = [
 export default function WorkflowDetailPage({ id, navigate }) {
   const workflowId = id && id !== 'undefined' ? id : null;
   const [selectedStep, setSelectedStep] = useState(null);
+  const [autoReload, setAutoReload] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000);
   const [infoTab, setInfoTab] = useState(null);
 
-  const workflow = useLoad(() => (workflowId ? api.workflow(workflowId) : null), [workflowId], { interval: 5000 });
-  const steps = useLoad(() => (workflowId ? api.steps(workflowId) : null), [workflowId], { interval: 5000 });
+  const workflow = useLoad(() => (workflowId ? api.workflow(workflowId) : null), [workflowId], { interval: autoReload ? refreshInterval : 0 });
+  const steps = useLoad(() => (workflowId ? api.steps(workflowId) : null), [workflowId], { interval: autoReload ? refreshInterval : 0 });
   const workflowName = workflow.data?.workflow || workflow.data?.workflowName || workflowId;
   const definition = useLoad(() => (workflowName && workflowName !== workflowId ? api.definition(workflowName) : null), [workflowName]);
-  const context = useLoad(() => (workflowId ? api.context(workflowId) : null), [workflowId], { interval: 7000 });
-  const metadata = useLoad(() => (workflowId ? api.metadata(workflowId) : null), [workflowId], { interval: 7000 });
-  const auditLog = useLoad(() => (workflowId ? api.workflowLogs(workflowId) : null), [workflowId], { interval: 7000 });
+  const context = useLoad(() => (workflowId ? api.context(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
+  const metadata = useLoad(() => (workflowId ? api.metadata(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
+  const auditLog = useLoad(() => (workflowId ? api.workflowLogs(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
 
   const stepRows = Array.isArray(steps.data) ? steps.data : steps.data?.content || steps.data?.items || [];
   const stepConfigs = definition.data?.stepConfigs || {};
@@ -94,6 +97,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
 
         <div className="graph-topbar-actions">
           <Tabs items={INFO_TABS} active={infoTab} onChange={openInfoTab} />
+          <AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} />
           <button className="button" onClick={refresh}>
             <RefreshCw size={15} className={workflow.loading || steps.loading ? 'spin' : ''} />
             Refresh

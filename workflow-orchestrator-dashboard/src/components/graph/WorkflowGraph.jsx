@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -22,6 +22,7 @@ import { nodeTypes } from './StepNode';
  */
 function GraphCanvas({ steps, definition, selectedStepName, onSelectStep }) {
   const { fitView } = useReactFlow();
+  const didInitialFit = useRef(false);
   const graph = useMemo(() => buildGraph(steps, definition), [steps, definition]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -30,8 +31,11 @@ function GraphCanvas({ steps, definition, selectedStepName, onSelectStep }) {
     const laidOut = layoutNodes(graph.nodes, graph.edges);
     setNodes(laidOut);
     setEdges(graph.edges);
-    const timer = setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 30);
-    return () => clearTimeout(timer);
+    if (!didInitialFit.current && graph.nodes.length) {
+      didInitialFit.current = true;
+      const timer = setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 30);
+      return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph]);
 
@@ -51,7 +55,6 @@ function GraphCanvas({ steps, definition, selectedStepName, onSelectStep }) {
       onNodeClick={(_, node) => onSelectStep?.(node.data.step)}
       onPaneClick={() => onSelectStep?.(null)}
       nodeTypes={nodeTypes}
-      fitView
       minZoom={0.2}
       maxZoom={1.6}
       proOptions={{ hideAttribution: true }}
