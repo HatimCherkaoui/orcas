@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Boxes, ChevronLeft, ChevronRight, Waves } from 'lucide-react';
+import logo from '../../assets/logo.svg';
 import { Footer } from './Footer';
 
 const NAV_ITEMS = [
@@ -20,20 +21,25 @@ export function Shell({ page, navigate, children }) {
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="brand">
-            <div className="brand-mark">ORCAS</div>
+            <img className="brand-logo" src={logo} alt="Orcas" />
             {!collapsed && (
-              <div>
+              <div className="brand-copy">
                 <strong>Workflow Orchestrator</strong>
                 <p>Operations dashboard</p>
               </div>
             )}
           </div>
-          <button className="icon-button sidebar-toggle" onClick={() => setCollapsed((current) => !current)} aria-label="Toggle sidebar">
+
+          <button
+            className="icon-button sidebar-toggle"
+            onClick={() => setCollapsed((current) => !current)}
+            aria-label="Toggle sidebar"
+          >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" aria-label="Primary navigation">
           {NAV_ITEMS.map(({ path: itemPath, label, icon: Icon }) => {
             const active = page === itemPath;
             return (
@@ -42,6 +48,7 @@ export function Shell({ page, navigate, children }) {
                 className={`sidebar-link ${active ? 'active' : ''}`}
                 onClick={() => navigate?.(itemPath)}
                 title={collapsed ? label : undefined}
+                aria-current={active ? 'page' : undefined}
               >
                 <Icon size={16} />
                 {!collapsed && <span>{label}</span>}

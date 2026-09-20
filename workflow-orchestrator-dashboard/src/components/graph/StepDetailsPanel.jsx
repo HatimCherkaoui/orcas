@@ -59,6 +59,9 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
     setReplaying(true);
     try {
       await api.replayStep(workflowId, step.stepName);
+      details.reload();
+      context.reload();
+      logs.reload();
       onReplayed?.();
     } finally {
       setReplaying(false);

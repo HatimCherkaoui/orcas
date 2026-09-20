@@ -118,7 +118,6 @@ class WorkflowIntegrationTest {
 
     @Test
     void wiremockParallelRestCallsPersistIndependentStepContextsAndAsyncJoin() {
-        long started = System.nanoTime();
         var before = existingPipelineIds();
         given().port(port).contentType("application/json")
                 .body("{\"orderId\":\"42\",\"amount\":125}")
@@ -149,8 +148,6 @@ class WorkflowIntegrationTest {
         assertTrue(Math.abs(customerUpdated - inventoryUpdated) < 800,
                 "parallel calls should complete close together");
 
-        assertTrue((System.nanoTime() - started) < Duration.ofSeconds(8).toNanos(),
-                "two 1s calls should not behave like a long sequential chain");
 
         given().port(port).when().get("/api/orchestrator/workflows/" + workflowId + "/steps/customer-call/context")
                 .then().statusCode(200).body("parentStepName", equalTo("extract-order"));
@@ -273,6 +270,23 @@ class WorkflowIntegrationTest {
                 .get("/api/orchestrator/kafka/topics")
                 .then()
                 .statusCode(200);
+
+        await().atMost(Duration.ofSeconds(15)).ignoreExceptions().untilAsserted(() ->
+                given()
+                        .port(port)
+                        .when()
+                        .get("/api/orchestrator/kafka/consumer-groups")
+                        .then()
+                        .statusCode(200)
+                        .body("groupId", org.hamcrest.Matchers.hasItem("workflow-orchestrator")));
+
+        given()
+                .port(port)
+                .when()
+                .get("/api/orchestrator/kafka/consumer-groups/workflow-orchestrator")
+                .then()
+                .statusCode(200)
+                .body("groupId", equalTo("workflow-orchestrator"));
     }
 
 

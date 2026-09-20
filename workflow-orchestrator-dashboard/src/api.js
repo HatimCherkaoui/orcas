@@ -13,6 +13,7 @@ async function request(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       Accept: 'application/json',
+      ...(options.body != null ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -23,9 +24,6 @@ async function request(path, options = {}) {
     throw new Error(body || `${response.status} ${response.statusText}`);
   }
 
-  if (response.status === 204) {
-    return null;
-  }
 
   const body = await response.text();
   return body ? JSON.parse(body) : null;
