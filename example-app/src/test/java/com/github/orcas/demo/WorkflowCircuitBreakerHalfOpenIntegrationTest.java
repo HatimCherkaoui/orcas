@@ -24,6 +24,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 
 import static io.restassured.RestAssured.given;
@@ -70,20 +72,18 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         r.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         r.add("demo.customer.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("demo.inventory.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
-        r.add("demo.retry.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
-        r.add("demo.veryinstableapi.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
-        r.add("demo.tofail.force-timeout", () -> "false");
+        r.add("demo.archive.base-url", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080));
         r.add("management.otlp.tracing.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/traces");
         r.add("management.otlp.logs.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/logs");
         r.add("workflow.orchestrator.circuit-breaker.minimum-number-of-calls", () -> "2");
         r.add("workflow.orchestrator.circuit-breaker.failure-rate-threshold", () -> "50");
         r.add("workflow.orchestrator.circuit-breaker.wait-duration-in-open-state", () -> "1s");
         r.add("workflow.orchestrator.circuit-breaker.permitted-number-of-calls-in-half-open-state", () -> "1");
-        r.add("workflow.orchestrator.circuit-breaker.instances.veryinstableapi-call.minimum-number-of-calls", () -> "2");
-        r.add("workflow.orchestrator.circuit-breaker.instances.veryinstableapi-call.failure-rate-threshold", () -> "50");
-        r.add("workflow.orchestrator.circuit-breaker.instances.veryinstableapi-call.wait-duration-in-open-state", () -> "1s");
-        r.add("workflow.orchestrator.circuit-breaker.instances.veryinstableapi-call.permitted-number-of-calls-in-half-open-state", () -> "1");
-        r.add("workflow.orchestrator.retry.steps.veryinstableapi-call.max-attempts", () -> "1");
+        r.add("workflow.orchestrator.circuit-breaker.instances.archive-call.minimum-number-of-calls", () -> "2");
+        r.add("workflow.orchestrator.circuit-breaker.instances.archive-call.failure-rate-threshold", () -> "50");
+        r.add("workflow.orchestrator.circuit-breaker.instances.archive-call.wait-duration-in-open-state", () -> "1s");
+        r.add("workflow.orchestrator.circuit-breaker.instances.archive-call.permitted-number-of-calls-in-half-open-state", () -> "1");
+        r.add("workflow.orchestrator.retry.steps.archive-call.max-attempts", () -> "1");
     }
 
     @BeforeAll
@@ -94,30 +94,13 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
     @BeforeAll
     static void wiremockMappings() throws Exception {
         String base = "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080);
-        String customer = """
-                {"request":{"method":"GET","urlPathPattern":"/customers/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"customer","status":"OK"}}}
-                """;
-        String inventory = """
-                {"request":{"method":"GET","urlPathPattern":"/inventory/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"inventory","status":"OK"}}}
-                """;
-        String retrySuccess = """
-                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/success/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
-                """;
-        String retrySuspend = """
-                {"request":{"method":"GET","urlPathPattern":"/retrydemo/.*/suspend/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"retrydemo","status":"OK"}}}
-                """;
-        String unstableFirst = """
-                {"scenarioName":"unstable-recovery","requiredScenarioState":"Started","newScenarioState":"FAILED_ONCE","request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":500,"fixedDelayMilliseconds":100,"jsonBody":{"source":"veryinstableapi","status":"ERROR-1"}}}
-                """;
-        String unstableSecond = """
-                {"scenarioName":"unstable-recovery","requiredScenarioState":"FAILED_ONCE","newScenarioState":"FAILED_TWICE","request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":500,"fixedDelayMilliseconds":100,"jsonBody":{"source":"veryinstableapi","status":"ERROR-2"}}}
-                """;
-        String unstableSuccess = """
-                {"scenarioName":"unstable-recovery","requiredScenarioState":"FAILED_TWICE","newScenarioState":"RECOVERED","request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":500,"fixedDelayMilliseconds":100,"jsonBody":{"source":"veryinstableapi","status":"ERROR-3"}}}
-                """;
-        String unstableRecovered = """
-                {"scenarioName":"unstable-recovery","requiredScenarioState":"RECOVERED","newScenarioState":"RECOVERED","request":{"method":"GET","urlPathPattern":"/veryinstableendpoint/.*"},"response":{"status":200,"fixedDelayMilliseconds":100,"jsonBody":{"source":"veryinstableapi","status":"OK"}}}
-                """;
+        // get stubs from directory wiremock/mappings/*.json
+        String customer = Files.readString(Path.of("../wiremock/mappings/customer.json"));
+        String inventory = Files.readString(Path.of("../wiremock/mappings/inventory.json"));
+        String archive = Files.readString(Path.of("../wiremock/mappings/archive.json"));
+        String archive1 = Files.readString(Path.of("../wiremock/mappings/archive-1.json"));
+        String archive2 = Files.readString(Path.of("../wiremock/mappings/archive-2.json"));
+        String archive3 = Files.readString(Path.of("../wiremock/mappings/archive-3.json"));
         String otlpTraces = """
                 {"request":{"method":"POST","urlPath":"/v1/traces"},"response":{"status":200}}
                 """;
@@ -125,7 +108,7 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
                 {"request":{"method":"POST","urlPath":"/v1/logs"},"response":{"status":200}}
                 """;
         HttpClient client = HttpClient.newHttpClient();
-        for (String mapping : new String[]{customer, inventory, retrySuccess, retrySuspend, unstableFirst, unstableSecond, unstableSuccess, unstableRecovered, otlpTraces, otlpLogs}) {
+        for (String mapping : new String[]{customer, inventory, archive, archive1, archive2, archive3, otlpTraces, otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(base + "/__admin/mappings"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapping))
@@ -150,14 +133,14 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(500)).ignoreExceptions().untilAsserted(() ->
                 given().port(port)
                         .when()
-                        .get("/api/orchestrator/workflows/" + observedPipelineId + "/steps/veryinstableapi-call")
+                        .get("/api/orchestrator/workflows/" + observedPipelineId + "/steps/archive-call")
                         .then()
                         .statusCode(200)
                         .body("stepConfig.circuitBreakerEnabled", equalTo(true))
-                        .body("stepConfig.circuitBreakerName", equalTo("veryinstableapi-call"))
+                        .body("stepConfig.circuitBreakerName", equalTo("archive-call"))
                         .body("circuitBreakerState", notNullValue())
                         .body("scheduledRetry.type", equalTo("HALF_OPEN_REPLAY"))
-                        .body("scheduledRetry.breakerName", equalTo("veryinstableapi-call"))
+                        .body("scheduledRetry.breakerName", equalTo("archive-call"))
                         .body("scheduledRetry.scheduledAt", notNullValue()));
 
         var workflowIds = awaitSuccessfulPipelineIds(before, 3);
@@ -165,7 +148,7 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
 
         for (String workflowId : workflowIds) {
             await().atMost(Duration.ofSeconds(90)).pollInterval(Duration.ofMillis(500)).ignoreExceptions().untilAsserted(() -> {
-                var step = workflowQueryService.step(workflowId, "veryinstableapi-call");
+                var step = workflowQueryService.step(workflowId, "archive-call");
                 System.out.println("Step state for " + workflowId + ": " + step.state());
                 assertEquals("SUCCESS", step.state());
             });
@@ -174,7 +157,7 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         }
 
         await().atMost(Duration.ofSeconds(45)).pollInterval(Duration.ofMillis(500)).untilAsserted(() ->
-                assertTrue(veryInstableRequestCount() >= 4, "expected the breaker to retry suspended workflows after half-open recovery"));
+                assertTrue(archiveRequestCount() >= 4, "expected the breaker to retry suspended workflows after half-open recovery"));
     }
 
     private java.util.Set<String> existingPipelineIds() {
@@ -211,11 +194,11 @@ class WorkflowCircuitBreakerHalfOpenIntegrationTest {
         return found.get();
     }
 
-    private int veryInstableRequestCount() throws Exception {
+    private int archiveRequestCount() throws Exception {
         String base = "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080);
         String body = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(base + "/__admin/requests/count"))
                         .header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString("{\"method\": \"GET\", \"urlPathPattern\": \"/veryinstableendpoint/.*\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"method\": \"GET\", \"urlPathPattern\": \"/archive/.*\"}"))
                         .build(), HttpResponse.BodyHandlers.ofString())
                 .body();
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"count\"\\s*:\\s*(\\d+)").matcher(body);
