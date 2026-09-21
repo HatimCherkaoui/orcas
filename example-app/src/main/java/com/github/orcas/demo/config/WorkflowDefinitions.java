@@ -1,5 +1,6 @@
 package com.github.orcas.demo.config;
 
+import com.github.orcas.demo.workflows.OrderWorkflow;
 import com.github.orcas.orchestrator.core.builder.*;
 import com.github.orcas.orchestrator.core.model.Status;
 import org.springframework.stereotype.Component;
@@ -21,11 +22,7 @@ public class WorkflowDefinitions implements WorkflowDefinitionProvider {
                 .and("inventory-call")
                 .then("join").end()
                 .sequential().when(StatusCriteria.status("join", Status.SUCCESS))
-                .then("retry-success-call")
-                .sequential().when(StatusCriteria.status("retry-success-call", Status.SUCCESS))
-                .then("retry-suspend-call")
-                .sequential().when(StatusCriteria.status("retry-suspend-call", Status.SUCCESS))
-                .then("veryinstableapi-call")
+                .then("archive-call")
                 .async().when(StatusCriteria.status("join", Status.SUCCESS))
                 .and("notify").end()
                 .build();

@@ -1,18 +1,18 @@
 {
   "priority": 1,
-  "scenarioName": "retry-success-demo",
+  "scenarioName": "archive-recovery",
   "requiredScenarioState": "FAILED_TWICE",
   "newScenarioState": "RECOVERED",
   "request": {
     "method": "GET",
-    "urlPathPattern": "/retrydemo/retry-success/success/.*"
+    "urlPathPattern": "/archive/.*"
   },
   "response": {
-    "status": 200,
+    "status": 500,
     "fixedDelayMilliseconds": 250,
     "jsonBody": {
-      "source": "retrydemo",
-      "status": "RECOVERED"
+      "source": "archive",
+      "status": "ERROR-3"
     }
   }
 }

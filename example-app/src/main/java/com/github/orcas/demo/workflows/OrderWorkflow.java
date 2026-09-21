@@ -1,12 +1,10 @@
-package com.github.orcas.demo.config;
+package com.github.orcas.demo.workflows;
 
 import com.github.orcas.orchestrator.core.annotation.Workflow;
 import com.github.orcas.orchestrator.core.annotation.WorkflowStep;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
-
-import java.util.Random;
 
 @Workflow("order-pipeline")
 public class OrderWorkflow {

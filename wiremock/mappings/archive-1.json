@@ -1,17 +1,17 @@
 {
   "priority": 1,
-  "scenarioName": "retry-suspend-demo",
+  "scenarioName": "archive-recovery",
   "requiredScenarioState": "FAILED_ONCE",
-  "newScenarioState": "READY_FOR_REPLAY",
+  "newScenarioState": "FAILED_TWICE",
   "request": {
     "method": "GET",
-    "urlPathPattern": "/retrydemo/retry-suspend/suspend/.*"
+    "urlPathPattern": "/archive/.*"
   },
   "response": {
     "status": 500,
     "fixedDelayMilliseconds": 250,
     "jsonBody": {
-      "source": "retrydemo",
+      "source": "archive",
       "status": "ERROR-2"
     }
   }

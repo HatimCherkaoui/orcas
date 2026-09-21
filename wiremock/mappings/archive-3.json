@@ -1,17 +1,17 @@
 {
   "priority": 1,
-  "scenarioName": "veryinstableapi-recovery",
+  "scenarioName": "archive-recovery",
   "requiredScenarioState": "RECOVERED",
   "newScenarioState": "RECOVERED",
   "request": {
     "method": "GET",
-    "urlPathPattern": "/veryinstableendpoint/circuit-breaker/.*"
+    "urlPathPattern": "/archive/.*"
   },
   "response": {
     "status": 200,
     "fixedDelayMilliseconds": 250,
     "jsonBody": {
-      "source": "veryinstableapi",
+      "source": "archive",
       "status": "OK"
     }
   }

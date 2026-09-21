@@ -85,8 +85,8 @@ demo:
     base-url: ${DEMO_INVENTORY_BASE_URL:https://httpbin.org}
   retry:
     base-url: ${DEMO_RETRY_BASE_URL:http://localhost:8089}
-  veryinstableapi:
-    base-url: ${DEMO_VERYINSTABLEAPI_BASE_URL:http://localhost:8089}
+  archive:
+    base-url: ${DEMO_ARCHIVE_BASE_URL:http://localhost:8089}
 
 logging:
   pattern:
