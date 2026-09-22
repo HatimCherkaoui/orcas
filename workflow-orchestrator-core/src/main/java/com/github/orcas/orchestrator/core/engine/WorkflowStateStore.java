@@ -1,13 +1,13 @@
 package com.github.orcas.orchestrator.core.engine;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StatusEvent;
 import com.github.orcas.orchestrator.core.model.StepContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 import java.util.List;
 
 public interface WorkflowStateStore {
-    void start(String id, String workflow, PipelineContext context);
+    void start(String id, String workflow, WorkflowContext context);
 
     void record(StatusEvent event);
 
@@ -15,19 +15,26 @@ public interface WorkflowStateStore {
         record(event);
     }
 
-    default String workflowName(String id) { throw new UnsupportedOperationException("workflowName not implemented"); }
+    default String workflowName(String id) {
+        throw new UnsupportedOperationException("workflowName not implemented");
+    }
 
-    PipelineContext context(String id);
+    WorkflowContext context(String id);
 
-    default StepContext stepContext(String workflowId, String stepName) { return null; }
+    default StepContext stepContext(String workflowId, String stepName) {
+        return null;
+    }
 
-    default void saveStepContext(StepContext context) { }
+    default void saveStepContext(StepContext context) {
+    }
 
     /**
      * Returns workflow instance ids whose {@code stepName} is currently suspended and
      * therefore eligible for a retry/replay.
      */
-    default List<String> suspendedWorkflowIds(String stepName) { return List.of(); }
+    default List<String> suspendedWorkflowIds(String stepName) {
+        return List.of();
+    }
 
     /**
      * Records a single retry attempt for {@code stepName} of workflow instance
@@ -42,9 +49,10 @@ public interface WorkflowStateStore {
      * @param attempt    the 1-based delivery/replay attempt number, if known (0 if not applicable)
      * @param reason     a short human-readable reason for the retry (e.g. the root error message)
      */
-    default void recordRetry(String workflowId, String stepName, int attempt, String reason) { }
+    default void recordRetry(String workflowId, String stepName, int attempt, String reason) {
+    }
 
-    void updateContext(String id, PipelineContext context);
+    void updateContext(String id, WorkflowContext context);
 
     default void finish(StatusEvent event) {
     }

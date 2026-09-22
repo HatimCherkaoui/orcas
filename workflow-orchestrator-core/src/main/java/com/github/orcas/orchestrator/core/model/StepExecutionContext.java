@@ -12,14 +12,14 @@ public final class StepExecutionContext {
     private final String workflowId;
     private final String workflow;
     private final String stepName;
-    private final PipelineContext workflowContext;
+    private final WorkflowContext workflowContext;
     private final StepContext parentStepContext;
     private final Object input;
     private volatile Object output;
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
 
     public StepExecutionContext(String workflowId, String workflow, String stepName,
-                                PipelineContext workflowContext, StepContext parentStepContext,
+                                WorkflowContext workflowContext, StepContext parentStepContext,
                                 Object input) {
         this.workflowId = workflowId;
         this.workflow = workflow;
@@ -29,15 +29,42 @@ public final class StepExecutionContext {
         this.input = input;
     }
 
-    public String workflowId() { return workflowId; }
-    public String workflow() { return workflow; }
-    public String stepName() { return stepName; }
-    public PipelineContext workflowContext() { return workflowContext; }
-    public StepContext parentStepContext() { return parentStepContext; }
-    public Object input() { return input; }
-    public Object output() { return output; }
-    public void output(Object value) { this.output = value; }
-    public Map<String, Object> attributes() { return attributes; }
+    public String workflowId() {
+        return workflowId;
+    }
+
+    public String workflow() {
+        return workflow;
+    }
+
+    public String stepName() {
+        return stepName;
+    }
+
+    public WorkflowContext workflowContext() {
+        return workflowContext;
+    }
+
+    public StepContext parentStepContext() {
+        return parentStepContext;
+    }
+
+    public Object input() {
+        return input;
+    }
+
+    public Object output() {
+        return output;
+    }
+
+    public void output(Object value) {
+        this.output = value;
+    }
+
+    public Map<String, Object> attributes() {
+        return attributes;
+    }
+
     public StepExecutionContext attribute(String key, Object value) {
         if (key != null && value != null) attributes.put(key, value);
         return this;

@@ -7,7 +7,7 @@ import com.github.orcas.orchestrator.core.api.ContextMapper;
 import com.github.orcas.orchestrator.core.api.ResponseConsumer;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
-import com.github.orcas.orchestrator.core.model.PipelineContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationContext;
@@ -51,7 +51,7 @@ public final class AsyncRestClientWorkflowStep extends AsyncStep {
     }
 
     @Override
-    public StepResult executeAsync(PipelineContext context) throws Exception {
+    public StepResult executeAsync(WorkflowContext context) throws Exception {
         return delegate.execute(context);
     }
 }

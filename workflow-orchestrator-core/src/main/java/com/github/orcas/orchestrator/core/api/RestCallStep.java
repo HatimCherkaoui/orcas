@@ -1,7 +1,7 @@
 package com.github.orcas.orchestrator.core.api;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 import java.util.function.Function;
 
@@ -23,10 +23,13 @@ public final class RestCallStep<I, O> extends Step {
         this.resultMapper = resultMapper;
     }
 
-    @Override public String name() { return name; }
+    @Override
+    public String name() {
+        return name;
+    }
 
     @Override
-    public StepResult execute(PipelineContext context) throws Exception {
+    public StepResult execute(WorkflowContext context) throws Exception {
         StepExecutionContext execution = com.github.orcas.orchestrator.core.model.WorkflowContextHolder.step();
         I request = mapper.map(execution);
         Object response = caller.apply(request);

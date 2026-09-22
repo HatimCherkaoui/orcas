@@ -1,8 +1,8 @@
 package com.github.orcas.orchestrator.core.api;
 
 import com.github.orcas.orchestrator.core.model.Metadata;
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.CompletionStage;
@@ -26,21 +26,22 @@ public final class MethodAsyncWorkflowStep extends AsyncStep {
     }
 
     @Override
-    public StepResult executeAsync(PipelineContext context) throws Exception {
+    public StepResult executeAsync(WorkflowContext context) throws Exception {
         Object result = method.invoke(target, arguments(context));
         if (result instanceof CompletionStage<?> stage) result = stage.toCompletableFuture().join();
         if (result instanceof StepResult sr) return sr;
-        if (result instanceof PipelineContext pc) return StepResult.success(pc);
+        if (result instanceof WorkflowContext pc) return StepResult.success(pc);
         return result == null ? StepResult.success(context) : StepResult.success(context.withBusinessInput(result));
     }
 
-    private Object[] arguments(PipelineContext context) {
+    private Object[] arguments(WorkflowContext context) {
         var p = method.getParameterTypes();
         if (p.length == 0) return new Object[0];
         if (p.length == 1) {
-            if (PipelineContext.class.isAssignableFrom(p[0])) return new Object[]{context};
+            if (WorkflowContext.class.isAssignableFrom(p[0])) return new Object[]{context};
             if (Metadata.class.isAssignableFrom(p[0])) return new Object[]{context.metadata()};
-            if (StepExecutionContext.class.isAssignableFrom(p[0])) return new Object[]{com.github.orcas.orchestrator.core.model.WorkflowContextHolder.step()};
+            if (StepExecutionContext.class.isAssignableFrom(p[0]))
+                return new Object[]{com.github.orcas.orchestrator.core.model.WorkflowContextHolder.step()};
             return new Object[]{context.businessInput()};
         }
         throw new IllegalArgumentException("Workflow step method must have zero or one parameter: " + method);

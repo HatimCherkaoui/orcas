@@ -188,7 +188,7 @@ class WorkflowEngineTest {
         verify(store).start(
                 any(String.class),
                 eq("myWorkflow"),
-                any(PipelineContext.class)
+                any(WorkflowContext.class)
         );
 
         verify(publisher).publish(any(StatusEvent.class));
@@ -918,8 +918,8 @@ class WorkflowEngineTest {
         );
     }
 
-    private static PipelineContext mockPipelineContext() {
-        var context = mock(PipelineContext.class);
+    private static WorkflowContext mockPipelineContext() {
+        var context = mock(WorkflowContext.class);
 
         when(context.businessInput())
                 .thenReturn("input");

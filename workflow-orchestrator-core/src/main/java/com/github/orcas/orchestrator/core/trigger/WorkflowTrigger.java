@@ -1,6 +1,6 @@
 package com.github.orcas.orchestrator.core.trigger;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 /**
  * Strategy for starting a workflow instance from some external stimulus (an inbound
@@ -17,5 +17,5 @@ public interface WorkflowTrigger {
      * @param workflow name of the workflow to trigger
      * @param context  business input and metadata for the new instance
      */
-    void trigger(String workflow, PipelineContext context);
+    void trigger(String workflow, WorkflowContext context);
 }

@@ -3,7 +3,7 @@ package com.github.orcas.orchestrator.core.model;
 import org.slf4j.MDC;
 
 /**
- * Thread-local holder that makes the {@link PipelineContext} and, when available, the
+ * Thread-local holder that makes the {@link WorkflowContext} and, when available, the
  * {@link StepExecutionContext} of the workflow step currently executing on the calling
  * thread accessible to collaborators that are not part of the explicit call chain
  * (for example AOP aspects or {@code Step} implementations that need the raw HTTP
@@ -23,23 +23,32 @@ import org.slf4j.MDC;
  * reuse (both in this holder and in the MDC).
  */
 public final class WorkflowContextHolder {
-    /** MDC key holding the current workflow instance id. */
+    /**
+     * MDC key holding the current workflow instance id.
+     */
     public static final String MDC_WORKFLOW_ID = "workflowId";
-    /** MDC key holding the current workflow definition name. */
+    /**
+     * MDC key holding the current workflow definition name.
+     */
     public static final String MDC_WORKFLOW = "workflow";
-    /** MDC key holding the name of the step currently executing. */
+    /**
+     * MDC key holding the name of the step currently executing.
+     */
     public static final String MDC_STEP = "step";
 
-    public record Execution(String workflowId, String workflow, PipelineContext context, StepExecutionContext step) {}
+    public record Execution(String workflowId, String workflow, WorkflowContext context, StepExecutionContext step) {
+    }
+
     private static final ThreadLocal<Execution> CURRENT = new ThreadLocal<>();
 
-    private WorkflowContextHolder() {}
+    private WorkflowContextHolder() {
+    }
 
     /**
-     * Binds only the business {@link PipelineContext} to the current thread, without any
+     * Binds only the business {@link WorkflowContext} to the current thread, without any
      * workflow/step identity. Used before a workflow instance id has been assigned.
      */
-    public static void set(PipelineContext context) {
+    public static void set(WorkflowContext context) {
         CURRENT.set(new Execution(null, null, context, null));
         MDC.remove(MDC_WORKFLOW_ID);
         MDC.remove(MDC_WORKFLOW);
@@ -53,7 +62,7 @@ public final class WorkflowContextHolder {
      * @param workflow   name of the workflow definition
      * @param context    the business pipeline context for this instance
      */
-    public static void set(String workflowId, String workflow, PipelineContext context) {
+    public static void set(String workflowId, String workflow, WorkflowContext context) {
         CURRENT.set(new Execution(workflowId, workflow, context, null));
         putMdc(workflowId, workflow, null);
     }
@@ -71,20 +80,28 @@ public final class WorkflowContextHolder {
         putMdc(workflowId, workflow, step.stepName());
     }
 
-    /** Returns the business context bound to the current thread, or {@code null} if none. */
-    public static PipelineContext current() {
+    /**
+     * Returns the business context bound to the current thread, or {@code null} if none.
+     */
+    public static WorkflowContext current() {
         var e = CURRENT.get();
         return e == null ? null : e.context();
     }
 
-    /** Returns the step execution context bound to the current thread, or {@code null} if none. */
+    /**
+     * Returns the step execution context bound to the current thread, or {@code null} if none.
+     */
     public static StepExecutionContext step() {
         var e = CURRENT.get();
         return e == null ? null : e.step();
     }
 
-    /** Returns the full {@link Execution} bound to the current thread, or {@code null} if none. */
-    public static Execution execution() { return CURRENT.get(); }
+    /**
+     * Returns the full {@link Execution} bound to the current thread, or {@code null} if none.
+     */
+    public static Execution execution() {
+        return CURRENT.get();
+    }
 
     /**
      * Clears the thread-local binding and the associated MDC entries. Must always be
@@ -98,8 +115,11 @@ public final class WorkflowContextHolder {
     }
 
     private static void putMdc(String workflowId, String workflow, String step) {
-        if (workflowId != null) MDC.put(MDC_WORKFLOW_ID, workflowId); else MDC.remove(MDC_WORKFLOW_ID);
-        if (workflow != null) MDC.put(MDC_WORKFLOW, workflow); else MDC.remove(MDC_WORKFLOW);
-        if (step != null) MDC.put(MDC_STEP, step); else MDC.remove(MDC_STEP);
+        if (workflowId != null) MDC.put(MDC_WORKFLOW_ID, workflowId);
+        else MDC.remove(MDC_WORKFLOW_ID);
+        if (workflow != null) MDC.put(MDC_WORKFLOW, workflow);
+        else MDC.remove(MDC_WORKFLOW);
+        if (step != null) MDC.put(MDC_STEP, step);
+        else MDC.remove(MDC_STEP);
     }
 }

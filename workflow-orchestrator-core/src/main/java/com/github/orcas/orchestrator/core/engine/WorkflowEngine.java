@@ -6,9 +6,9 @@ import com.github.orcas.orchestrator.core.error.DefaultWorkflowErrorCategorizer;
 import com.github.orcas.orchestrator.core.error.WorkflowError;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
 import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.Status;
 import com.github.orcas.orchestrator.core.model.StatusEvent;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContextHolder;
 import com.github.orcas.orchestrator.core.retry.WorkflowResponseException;
 import com.github.orcas.orchestrator.core.retry.WorkflowRetryableException;
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 
 /**
  * Core execution engine of the orchestrator. Receives {@link StatusEvent}s (either the
- * synthetic {@code INIT} event produced by {@link #start(String, PipelineContext)} or
+ * synthetic {@code INIT} event produced by {@link #start(String, WorkflowContext)} or
  * events emitted by completed steps), resolves which {@link WorkflowStep}s should run
  * next according to the {@link WorkflowDefinition} routing table, and executes them.
  *
@@ -96,7 +96,7 @@ public final class WorkflowEngine {
      * @param context  initial business context and metadata for the new instance
      * @throws IllegalArgumentException if no workflow is registered under that name
      */
-    public void start(String workflow, PipelineContext context) {
+    public void start(String workflow, WorkflowContext context) {
         if (registry.get(workflow) == null) {
             log.warn("Rejected start request for unknown workflow '{}'", workflow);
             throw new IllegalArgumentException("Unknown workflow: " + workflow);
@@ -115,15 +115,15 @@ public final class WorkflowEngine {
     }
 
     /**
-     * Convenience overload that builds a {@link PipelineContext} from an HTTP request
-     * body and headers before delegating to {@link #start(String, PipelineContext)}.
+     * Convenience overload that builds a {@link WorkflowContext} from an HTTP request
+     * body and headers before delegating to {@link #start(String, WorkflowContext)}.
      *
      * @param workflow name of the registered workflow to start
      * @param body     deserialized request body used as business input
      * @param headers  HTTP request headers, captured into the pipeline metadata
      */
     public void startFromHttpPost(String workflow, Object body, java.util.Map<String, String> headers) {
-        start(workflow, PipelineContext.of(body, headers));
+        start(workflow, WorkflowContext.of(body, headers));
     }
 
     /**
@@ -136,7 +136,7 @@ public final class WorkflowEngine {
      * @throws IllegalArgumentException if the step is not part of the workflow definition
      */
     public void replay(String workflowId, String stepName) {
-        PipelineContext context = store.context(workflowId);
+        WorkflowContext context = store.context(workflowId);
         String workflow = store.workflowName(workflowId);
         var definition = registry.get(workflow);
         var step = definition.findStep(stepName);
@@ -230,7 +230,7 @@ public final class WorkflowEngine {
 
 
     private void execute(StatusEvent previous, WorkflowStep step) {
-        PipelineContext context = store.context(previous.workflowId());
+        WorkflowContext context = store.context(previous.workflowId());
         var parent = store.stepContext(previous.workflowId(), previous.step());
         var execution = new com.github.orcas.orchestrator.core.model.StepExecutionContext(
                 previous.workflowId(), previous.workflow(), step.name(), context, parent, context.businessInput());
@@ -296,7 +296,7 @@ public final class WorkflowEngine {
                 e.input(), e.output(), e.attributes(), java.time.Instant.now());
     }
 
-    private void handleFailure(StatusEvent previous, WorkflowStep step, Throwable error, PipelineContext context) {
+    private void handleFailure(StatusEvent previous, WorkflowStep step, Throwable error, WorkflowContext context) {
         if (error instanceof WorkflowResponseException response) {
             if (response.error().replayable()) throw new CompletionException(response);
             suspend(previous, step, response.error());

@@ -1,6 +1,6 @@
 package com.github.orcas.orchestrator.core.api;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 /**
  * A synchronous workflow step, executed on the calling thread (the {@code WorkflowEngine}'s
@@ -15,8 +15,8 @@ public abstract class Step extends WorkflowStep {
      *                in the workflow
      * @return the outcome of the step, including the (possibly updated) context
      * @throws Exception any failure; classified by a
-     *                    {@link com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer}
-     *                    to decide between an automatic replay or suspending the workflow
+     *                   {@link com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer}
+     *                   to decide between an automatic replay or suspending the workflow
      */
-    public abstract StepResult execute(PipelineContext context) throws Exception;
+    public abstract StepResult execute(WorkflowContext context) throws Exception;
 }

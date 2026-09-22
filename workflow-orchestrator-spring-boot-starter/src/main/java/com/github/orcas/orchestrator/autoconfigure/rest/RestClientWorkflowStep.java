@@ -9,8 +9,8 @@ import com.github.orcas.orchestrator.core.api.ResponseConsumer;
 import com.github.orcas.orchestrator.core.api.Step;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContextHolder;
 import com.github.orcas.orchestrator.core.retry.WorkflowResponseException;
 import com.github.orcas.orchestrator.core.retry.WorkflowSuspendedException;
@@ -40,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * A {@link Step} that invokes a single method of a {@link WorkflowRestClient}
  * declarative interface, mapping the current {@link StepExecutionContext} to call
- * arguments and the HTTP response back onto the {@link PipelineContext}. Non-2xx
+ * arguments and the HTTP response back onto the {@link WorkflowContext}. Non-2xx
  * responses are classified via {@link WorkflowErrorCategorizer#classifyResponse(int)}
  * and surfaced as a {@link WorkflowResponseException}, which the engine treats as
  * replayable or terminal accordingly. Supports an optional in-memory response cache
@@ -114,7 +114,7 @@ public final class RestClientWorkflowStep extends Step {
     }
 
     @Override
-    public StepResult execute(PipelineContext context) throws Exception {
+    public StepResult execute(WorkflowContext context) throws Exception {
         CircuitBreakerRegistry circuitBreakerRegistry = circuitBreakerRegistryProvider.getIfAvailable();
         WorkflowRetryScheduler retryScheduler = retrySchedulerProvider.getIfAvailable();
         WorkflowCircuitBreakerProperties circuitBreakerProperties = circuitBreakerPropertiesProvider.getIfAvailable();
@@ -143,7 +143,7 @@ public final class RestClientWorkflowStep extends Step {
         }
     }
 
-    private StepResult doExecute(PipelineContext context) throws Exception {
+    private StepResult doExecute(WorkflowContext context) throws Exception {
         StepExecutionContext execution = WorkflowContextHolder.step();
         Object[] args = arguments(execution);
         String cacheKey = null;
@@ -192,7 +192,7 @@ public final class RestClientWorkflowStep extends Step {
         return StepResult.success(context);
     }
 
-    private StepResult response(PipelineContext context, ResponseEntity<?> entity) {
+    private StepResult response(WorkflowContext context, ResponseEntity<?> entity) {
         context.metadata().put("http.response.status", Integer.toString(entity.getStatusCode().value()));
         entity.getHeaders().forEach((key, values) -> context.metadata().put("http.response.header." + key, String.join(",", values)));
         StepExecutionContext execution = WorkflowContextHolder.step();

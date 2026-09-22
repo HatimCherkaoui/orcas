@@ -1,7 +1,7 @@
 package com.github.orcas.orchestrator.core.api;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 /**
  * Minimal database adapter. The application decides whether writer is a JPA repository,
@@ -18,10 +18,13 @@ public final class DatabaseLoader<I> extends Step {
         this.writer = writer;
     }
 
-    @Override public String name() { return name; }
+    @Override
+    public String name() {
+        return name;
+    }
 
     @Override
-    public StepResult execute(PipelineContext context) throws Exception {
+    public StepResult execute(WorkflowContext context) throws Exception {
         StepExecutionContext execution = com.github.orcas.orchestrator.core.model.WorkflowContextHolder.step();
         I value = mapper.map(execution);
         writer.write(value);

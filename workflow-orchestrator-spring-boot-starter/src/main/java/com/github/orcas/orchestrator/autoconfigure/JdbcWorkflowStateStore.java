@@ -2,11 +2,7 @@ package com.github.orcas.orchestrator.autoconfigure;
 
 import com.github.orcas.orchestrator.core.api.StepNames;
 import com.github.orcas.orchestrator.core.engine.WorkflowStateStore;
-import com.github.orcas.orchestrator.core.model.Metadata;
-import com.github.orcas.orchestrator.core.model.PipelineContext;
-import com.github.orcas.orchestrator.core.model.Status;
-import com.github.orcas.orchestrator.core.model.StatusEvent;
-import com.github.orcas.orchestrator.core.model.StepContext;
+import com.github.orcas.orchestrator.core.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -48,7 +44,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     private final TransactionTemplate transactionTemplate;
 
     public JdbcWorkflowStateStore(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper,
-                                   PlatformTransactionManager transactionManager) {
+                                  PlatformTransactionManager transactionManager) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -97,7 +93,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     }
 
     @Override
-    public void start(String id, String workflow, PipelineContext context) {
+    public void start(String id, String workflow, WorkflowContext context) {
         log.debug("Persisting initial JDBC state for workflow instance {} ('{}')", id, workflow);
         Timestamp now = Timestamp.from(Instant.now());
         String contextJson = json(context.businessInput());
@@ -272,7 +268,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     }
 
     @Override
-    public PipelineContext context(String id) {
+    public WorkflowContext context(String id) {
         Map<String, Object> row = jdbc.queryForMap("""
                         select c.context_json, m.metadata_json
                           from workflow_context c
@@ -284,7 +280,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
             Object input = mapper.readValue(String.valueOf(row.get("context_json")), Object.class);
             @SuppressWarnings("unchecked")
             Map<String, String> metadata = mapper.readValue(String.valueOf(row.get("metadata_json")), Map.class);
-            return new PipelineContext(input, new Metadata(metadata));
+            return new WorkflowContext(input, new Metadata(metadata));
         } catch (Exception e) {
             throw new IllegalStateException("Unable to deserialize workflow execution " + id, e);
         }
@@ -293,10 +289,10 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
     @Override
     public StepContext stepContext(String workflowId, String stepName) {
         var rows = jdbc.query("""
-                select step_name, parent_step_name, input_json, output_json, attributes_json, date_updated
-                  from workflow_step_context
-                 where pipeline_id=:id and step_name=:step
-                """,
+                        select step_name, parent_step_name, input_json, output_json, attributes_json, date_updated
+                          from workflow_step_context
+                         where pipeline_id=:id and step_name=:step
+                        """,
                 new MapSqlParameterSource().addValue("id", workflowId).addValue("step", stepName),
                 (rs, n) -> new StepContext(
                         workflowId,
@@ -320,6 +316,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
                         """,
                 new MapSqlParameterSource().addValue("step", stepName, Types.VARCHAR), String.class);
     }
+
     public void saveStepContext(StepContext context) {
         Timestamp now = Timestamp.from(context.updatedAt() == null ? Instant.now() : context.updatedAt());
 
@@ -329,66 +326,72 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore {
             // and parallel steps), so establish the parent row first. The later status
             // event enriches this row with the concrete step class and terminal state.
             jdbc.update("""
-                    insert into workflow_step
-                        (pipeline_id, workflow, step_name, step_type_class_name, state,
-                         date_started, date_ended, date_updated)
-                    values (:id, :workflow, :step, null, 'RUNNING', :started, null, :updated)
-                    on conflict (pipeline_id, step_name) do nothing
-                    """,
+                            insert into workflow_step
+                                (pipeline_id, workflow, step_name, step_type_class_name, state,
+                                 date_started, date_ended, date_updated)
+                            values (:id, :workflow, :step, null, 'RUNNING', :started, null, :updated)
+                            on conflict (pipeline_id, step_name) do nothing
+                            """,
                     new MapSqlParameterSource()
-                        .addValue("id", context.workflowId(), Types.VARCHAR)
-                        .addValue("workflow", context.workflow(), Types.VARCHAR)
-                        .addValue("step", context.stepName(), Types.VARCHAR)
-                        .addValue("started", now, Types.TIMESTAMP)
-                        .addValue("updated", now, Types.TIMESTAMP));
+                            .addValue("id", context.workflowId(), Types.VARCHAR)
+                            .addValue("workflow", context.workflow(), Types.VARCHAR)
+                            .addValue("step", context.stepName(), Types.VARCHAR)
+                            .addValue("started", now, Types.TIMESTAMP)
+                            .addValue("updated", now, Types.TIMESTAMP));
 
             jdbc.update("""
-                    insert into workflow_step_context
-                        (pipeline_id, step_name, parent_step_name, input_json, output_json, attributes_json, date_updated)
-                    values (:id,:step,:parent,:input,:output,:attributes,:updated)
-                    on conflict (pipeline_id, step_name) do update set
-                        parent_step_name=excluded.parent_step_name,
-                        input_json=excluded.input_json,
-                        output_json=excluded.output_json,
-                        attributes_json=excluded.attributes_json,
-                        date_updated=excluded.date_updated
-                    """,
+                            insert into workflow_step_context
+                                (pipeline_id, step_name, parent_step_name, input_json, output_json, attributes_json, date_updated)
+                            values (:id,:step,:parent,:input,:output,:attributes,:updated)
+                            on conflict (pipeline_id, step_name) do update set
+                                parent_step_name=excluded.parent_step_name,
+                                input_json=excluded.input_json,
+                                output_json=excluded.output_json,
+                                attributes_json=excluded.attributes_json,
+                                date_updated=excluded.date_updated
+                            """,
                     new MapSqlParameterSource()
-                        .addValue("id", context.workflowId(), Types.VARCHAR)
-                        .addValue("step", context.stepName(), Types.VARCHAR)
-                        .addValue("parent", context.parentStepName(), Types.VARCHAR)
-                        .addValue("input", json(context.input()), Types.LONGVARCHAR)
-                        .addValue("output", json(context.output()), Types.LONGVARCHAR)
-                        .addValue("attributes", json(context.attributes()), Types.LONGVARCHAR)
-                        .addValue("updated", now, Types.TIMESTAMP));
+                            .addValue("id", context.workflowId(), Types.VARCHAR)
+                            .addValue("step", context.stepName(), Types.VARCHAR)
+                            .addValue("parent", context.parentStepName(), Types.VARCHAR)
+                            .addValue("input", json(context.input()), Types.LONGVARCHAR)
+                            .addValue("output", json(context.output()), Types.LONGVARCHAR)
+                            .addValue("attributes", json(context.attributes()), Types.LONGVARCHAR)
+                            .addValue("updated", now, Types.TIMESTAMP));
             jdbc.update("""
-                    insert into workflow_step_context_log
-                        (pipeline_id, step_name, snapshot_json, date_created)
-                    values (:id,:step,:snapshot,:at)
-                    """,
+                            insert into workflow_step_context_log
+                                (pipeline_id, step_name, snapshot_json, date_created)
+                            values (:id,:step,:snapshot,:at)
+                            """,
                     new MapSqlParameterSource()
-                        .addValue("id", context.workflowId(), Types.VARCHAR)
-                        .addValue("step", context.stepName(), Types.VARCHAR)
-                        .addValue("snapshot", json(context), Types.LONGVARCHAR)
-                        .addValue("at", now, Types.TIMESTAMP));
+                            .addValue("id", context.workflowId(), Types.VARCHAR)
+                            .addValue("step", context.stepName(), Types.VARCHAR)
+                            .addValue("snapshot", json(context), Types.LONGVARCHAR)
+                            .addValue("at", now, Types.TIMESTAMP));
         });
     }
 
     private Object readJson(String json) {
         if (json == null) return null;
-        try { return mapper.readValue(json, Object.class); }
-        catch (Exception e) { throw new IllegalStateException("Unable to deserialize step context", e); }
+        try {
+            return mapper.readValue(json, Object.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to deserialize step context", e);
+        }
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> readMapObject(String json) {
         if (json == null) return Map.of();
-        try { return mapper.readValue(json, Map.class); }
-        catch (Exception e) { throw new IllegalStateException("Unable to deserialize step attributes", e); }
+        try {
+            return mapper.readValue(json, Map.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to deserialize step attributes", e);
+        }
     }
 
     @Override
-    public void updateContext(String id, PipelineContext context) {
+    public void updateContext(String id, WorkflowContext context) {
         Timestamp now = Timestamp.from(Instant.now());
         String contextJson = json(context.businessInput());
         String metadataJson = json(context.metadata().asMap());

@@ -1,6 +1,6 @@
 package com.github.orcas.orchestrator.core.api;
 
-import com.github.orcas.orchestrator.core.model.PipelineContext;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 public class TypeAsyncWorkflowStep extends AsyncStep {
     private final Object target;
@@ -12,7 +12,7 @@ public class TypeAsyncWorkflowStep extends AsyncStep {
     }
 
     @Override
-    public StepResult executeAsync(PipelineContext context) throws Exception {
+    public StepResult executeAsync(WorkflowContext context) throws Exception {
         Object result = null;
         if (target instanceof AsyncStep step) {
             result = step.executeAsync(context);
@@ -26,10 +26,10 @@ public class TypeAsyncWorkflowStep extends AsyncStep {
         return name;
     }
 
-    private StepResult result(PipelineContext context, Object value) {
+    private StepResult result(WorkflowContext context, Object value) {
         if (value == null) return StepResult.success(context);
         if (value instanceof StepResult stepResult) return stepResult;
-        if (value instanceof PipelineContext pipelineContext) return StepResult.success(pipelineContext);
+        if (value instanceof WorkflowContext workflowContext) return StepResult.success(workflowContext);
         return StepResult.success(context.withBusinessInput(value));
     }
 }
