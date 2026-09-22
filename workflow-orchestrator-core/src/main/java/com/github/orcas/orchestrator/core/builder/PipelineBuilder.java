@@ -37,31 +37,81 @@ public final class PipelineBuilder {
         this.stepCatalog = stepCatalog;
     }
 
-    public Initialize initialize() { return new Initialize(); }
-    public Async async() { return new Async(); }
-    public Sequential sequential() { return new Sequential(); }
-    public Parallel parallel() { return new Parallel(); }
-    public WorkflowDefinition build() { return new WorkflowDefinition(name, routes); }
+    public Initialize initialize() {
+        return new Initialize();
+    }
+
+    public Async async() {
+        return new Async();
+    }
+
+    public Sequential sequential() {
+        return new Sequential();
+    }
+
+    public Parallel parallel() {
+        return new Parallel();
+    }
+
+    public WorkflowDefinition build() {
+        return new WorkflowDefinition(name, routes);
+    }
 
     public final class Sequential {
         private StatusCriteria c;
-        public Sequential when(StatusCriteria x) { c = x; return this; }
-        public PipelineBuilder then(String name) { return add(c, stepCatalog.get(name)); }
-        public PipelineBuilder then(Class<? extends WorkflowStep> clazz) { return add(c, stepFromClass(clazz)); }
+
+        public Sequential when(StatusCriteria x) {
+            c = x;
+            return this;
+        }
+
+        public PipelineBuilder then(String name) {
+            return add(c, stepCatalog.get(name));
+        }
+
+        public PipelineBuilder then(Class<? extends WorkflowStep> clazz) {
+            return add(c, stepFromClass(clazz));
+        }
     }
 
     public final class Parallel {
         private StatusCriteria c;
         private final List<WorkflowStep> branches = new ArrayList<>();
         private WorkflowStep join;
-        public Parallel when(StatusCriteria x) { c = x; return this; }
-        public Parallel and(String name) { branches.add(stepCatalog.get(name)); return this; }
-        public Parallel and(Class<? extends WorkflowStep> clazz) { branches.add(stepFromClass(clazz)); return this; }
-        public Parallel andAsync(Class<? extends WorkflowStep> clazz) { branches.add(stepFromClass(clazz)); return this; }
-        public Parallel then(String name) { join = stepCatalog.get(name); return this; }
-        public Parallel then(Class<? extends WorkflowStep> clazz) { join = stepFromClass(clazz); return this; }
+
+        public Parallel when(StatusCriteria x) {
+            c = x;
+            return this;
+        }
+
+        public Parallel and(String name) {
+            branches.add(stepCatalog.get(name));
+            return this;
+        }
+
+        public Parallel and(Class<? extends WorkflowStep> clazz) {
+            branches.add(stepFromClass(clazz));
+            return this;
+        }
+
+        public Parallel andAsync(Class<? extends WorkflowStep> clazz) {
+            branches.add(stepFromClass(clazz));
+            return this;
+        }
+
+        public Parallel then(String name) {
+            join = stepCatalog.get(name);
+            return this;
+        }
+
+        public Parallel then(Class<? extends WorkflowStep> clazz) {
+            join = stepFromClass(clazz);
+            return this;
+        }
+
         public PipelineBuilder end() {
-            if (branches.isEmpty() || join == null) throw new IllegalStateException("parallel requires branches and join");
+            if (branches.isEmpty() || join == null)
+                throw new IllegalStateException("parallel requires branches and join");
             routes.add(new WorkflowDefinition.Route(c, branches, join, UUID.randomUUID().toString()));
             return PipelineBuilder.this;
         }
@@ -69,18 +119,44 @@ public final class PipelineBuilder {
 
     public final class Initialize {
         private StatusCriteria c;
-        public Initialize on(StatusCriteria x) { c = x; return this; }
-        public PipelineBuilder then(WorkflowStep s) { return add(c, s); }
-        public PipelineBuilder then(String name) { return add(c, stepCatalog.get(name)); }
-        public PipelineBuilder then(Class<? extends WorkflowStep> clazz) { return add(c, stepFromClass(clazz)); }
+
+        public Initialize on(StatusCriteria x) {
+            c = x;
+            return this;
+        }
+
+        public PipelineBuilder then(WorkflowStep s) {
+            return add(c, s);
+        }
+
+        public PipelineBuilder then(String name) {
+            return add(c, stepCatalog.get(name));
+        }
+
+        public PipelineBuilder then(Class<? extends WorkflowStep> clazz) {
+            return add(c, stepFromClass(clazz));
+        }
     }
 
     public final class Async {
         private StatusCriteria criteria;
         private final List<WorkflowStep> asyncEvents = new ArrayList<>();
-        public Async when(StatusCriteria c) { criteria = c; return this; }
-        public Async and(String name) { asyncEvents.add(stepCatalog.get(name)); return this; }
-        public Async and(Class<? extends AsyncStep> clazz) { asyncEvents.add(stepFromClass(clazz)); return this; }
+
+        public Async when(StatusCriteria c) {
+            criteria = c;
+            return this;
+        }
+
+        public Async then(String name) {
+            asyncEvents.add(stepCatalog.get(name));
+            return this;
+        }
+
+        public Async then(Class<? extends AsyncStep> clazz) {
+            asyncEvents.add(stepFromClass(clazz));
+            return this;
+        }
+
         public PipelineBuilder end() {
             routes.add(new WorkflowDefinition.Route(criteria, asyncEvents, null, UUID.randomUUID().toString()));
             return PipelineBuilder.this;

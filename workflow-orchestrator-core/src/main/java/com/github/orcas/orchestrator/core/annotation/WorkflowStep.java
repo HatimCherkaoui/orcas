@@ -1,6 +1,7 @@
 package com.github.orcas.orchestrator.core.annotation;
 
 import com.github.orcas.orchestrator.core.api.ContextMapper;
+import com.github.orcas.orchestrator.core.api.ResponseConsumer;
 
 import java.lang.annotation.*;
 
@@ -14,10 +15,14 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface WorkflowStep {
-    /** Unique step name used for routing, replay and log/audit correlation. */
+    /**
+     * Unique step name used for routing, replay and log/audit correlation.
+     */
     String value();
 
-    /** Whether this step should be executed asynchronously (see {@code AsyncStep}). */
+    /**
+     * Whether this step should be executed asynchronously (see {@code AsyncStep}).
+     */
     boolean async() default false;
 
     /**
@@ -25,4 +30,7 @@ public @interface WorkflowStep {
      * Regular application methods can ignore it.
      */
     Class<? extends ContextMapper<?>> mapper() default ContextMapper.Identity.class;
+
+
+    Class<? extends ResponseConsumer<?>> responseSubscriber() default ResponseConsumer.Void.class;
 }

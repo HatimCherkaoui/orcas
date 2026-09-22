@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments"
+  },
+  "response": {
+    "status": 202,
+    "jsonBody": {
+      "paymentId": "pay-it-success",
+      "status": "PENDING"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  }
+}

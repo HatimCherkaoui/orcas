@@ -8,7 +8,7 @@ import org.springframework.web.service.annotation.GetExchange;
 
 @WorkflowRestClient(baseUrl = "${demo.inventory.base-url:http://localhost:8089}")
 public interface InventoryClient {
-    @WorkflowStep(value = "inventory-call", mapper = OrderIdMapper.class)
-    @GetExchange("/inventory/{id}")
-    ResponseEntity<String> get(@PathVariable("id") String id);
+    @WorkflowStep(value = "check-external-inventory", mapper = OrderIdMapper.class)
+    @GetExchange("/inventory/{orderId}")
+    ResponseEntity<String> check(@PathVariable String orderId);
 }

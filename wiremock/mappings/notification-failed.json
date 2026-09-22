@@ -1,0 +1,4 @@
+{
+  "request": { "method": "POST", "urlPath": "/notifications/payment-failed" },
+  "response": { "status": 202, "jsonBody": { "accepted": true }, "headers": { "Content-Type": "application/json" } }
+}

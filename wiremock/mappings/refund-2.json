@@ -1,0 +1,20 @@
+{
+  "priority": 1,
+  "scenarioName": "refund-recovery",
+  "requiredScenarioState": "FAILED_ONCE",
+  "newScenarioState": "FAILED_TWICE",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/payments/.*/refund"
+  },
+  "response": {
+    "status": 500,
+    "jsonBody": {
+      "errorCode": "REFUND-ERROR-2",
+      "errorMessage": "Refund failed due to network issues"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  }
+}

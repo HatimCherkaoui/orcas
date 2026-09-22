@@ -4,13 +4,14 @@ import com.github.orcas.orchestrator.autoconfigure.WorkflowCircuitBreakerPropert
 import com.github.orcas.orchestrator.autoconfigure.WorkflowRetryScheduler;
 import com.github.orcas.orchestrator.core.annotation.FallbackStrategy;
 import com.github.orcas.orchestrator.core.annotation.WorkflowCircuitBreaker;
+import com.github.orcas.orchestrator.core.api.ContextMapper;
+import com.github.orcas.orchestrator.core.api.ResponseConsumer;
 import com.github.orcas.orchestrator.core.api.Step;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
 import com.github.orcas.orchestrator.core.model.PipelineContext;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContextHolder;
-import com.github.orcas.orchestrator.core.api.ContextMapper;
 import com.github.orcas.orchestrator.core.retry.WorkflowResponseException;
 import com.github.orcas.orchestrator.core.retry.WorkflowSuspendedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -18,6 +19,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -54,27 +56,32 @@ public final class RestClientWorkflowStep extends Step {
     private final ObjectMapper mapper;
     private final WorkflowRestClientProperties properties;
     private final ContextMapper<Object> requestMapper;
+    private final ResponseConsumer<Object> responseConsumer;
     private final WorkflowCircuitBreaker circuitBreaker;
     private final ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider;
     private final ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider;
     private final ObjectProvider<WorkflowCircuitBreakerProperties> circuitBreakerPropertiesProvider;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+    private final ApplicationContext applicationContext;
 
     private record Cached(Object value, Instant expiresAt) {
     }
 
     public RestClientWorkflowStep(Object client, Class<?> interfaceType, String methodName, String name,
                                   Class<? extends ContextMapper<?>> mapperType,
+                                  Class<? extends ResponseConsumer<?>> responseConsumerType,
                                   WorkflowErrorCategorizer categorizer, ObjectMapper mapper,
                                   WorkflowRestClientProperties properties,
                                   ObjectProvider<CircuitBreakerRegistry> circuitBreakerRegistryProvider,
                                   ObjectProvider<WorkflowRetryScheduler> retrySchedulerProvider,
-                                  ObjectProvider<WorkflowCircuitBreakerProperties> circuitBreakerPropertiesProvider) {
+                                  ObjectProvider<WorkflowCircuitBreakerProperties> circuitBreakerPropertiesProvider, ApplicationContext applicationContext) {
         this.client = client;
         this.name = name;
         this.categorizer = categorizer;
         this.mapper = mapper;
         this.properties = properties;
+        this.applicationContext = applicationContext;
+
         try {
             @SuppressWarnings("unchecked")
             ContextMapper<Object> resolved = (ContextMapper<Object>) mapperType.getDeclaredConstructor().newInstance();
@@ -82,6 +89,8 @@ public final class RestClientWorkflowStep extends Step {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("REST mapper must expose a public no-arg constructor: " + mapperType.getName(), e);
         }
+        this.responseConsumer = (ResponseConsumer<Object>) resolveResponseConsumer(responseConsumerType);
+
         this.method = find(interfaceType, methodName);
         this.circuitBreaker = resolveCircuitBreaker(interfaceType, method);
         this.circuitBreakerRegistryProvider = circuitBreakerRegistryProvider;
@@ -152,8 +161,11 @@ public final class RestClientWorkflowStep extends Step {
         try {
             log.debug("Invoking REST client method {} for step '{}'", method.getName(), name);
             response = method.invoke(client, args);
-            if (response instanceof Mono<?> mono) response = mono.block();
-            else if (response instanceof Flux<?> flux) response = flux.collectList().block();
+            if (response instanceof Mono<?> mono) {
+                response = mono.block();
+            } else if (response instanceof Flux<?> flux) {
+                response = flux.collectList().block();
+            }
         } catch (java.lang.reflect.InvocationTargetException e) {
             log.warn("REST client call failed for step '{}': {}", name, e.getCause() != null ? e.getCause().toString() : e.toString());
             throw unwrap(e.getCause());
@@ -164,15 +176,19 @@ public final class RestClientWorkflowStep extends Step {
             cache.put(cacheKey, new Cached(response, Instant.now().plus(properties.getCache().getTtl())));
         }
         if (response instanceof ResponseEntity<?> entity) {
+            responseConsumer.consume(execution, response);
             return response(context, entity);
         }
         if (response instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof ResponseEntity<?>) {
             var bodies = new ArrayList<>();
             for (Object item : list) bodies.add(((ResponseEntity<?>) item).getBody());
-            ResponseEntity<?> last = (ResponseEntity<?>) list.get(list.size() - 1);
+            ResponseEntity<?> last = (ResponseEntity<?>) list.getLast();
+            responseConsumer.consume(execution, response);
             return response(context, new ResponseEntity<>(bodies, last.getHeaders(), last.getStatusCode()));
         }
-        if (execution != null) execution.output(response);
+        if (execution != null) {
+            execution.output(response);
+        }
         return StepResult.success(context);
     }
 
@@ -223,8 +239,7 @@ public final class RestClientWorkflowStep extends Step {
             if (path != null) {
                 Object value = mapped instanceof Map<?, ?> map ? map.get(path.value()) : null;
                 args.add(value != null ? value : resolveValue(path.value(), execution));
-            }
-            else if (header != null) args.add(execution.workflowContext().metadata().get(header.value()));
+            } else if (header != null) args.add(execution.workflowContext().metadata().get(header.value()));
             else if (body != null) args.add(mapped);
             else args.add(mapped);
         }
@@ -240,5 +255,15 @@ public final class RestClientWorkflowStep extends Step {
 
     private Exception unwrap(Throwable t) {
         return t instanceof Exception e ? e : new RuntimeException(t);
+    }
+
+    public ResponseConsumer<?> resolveResponseConsumer(
+            Class<? extends ResponseConsumer<?>> type) {
+
+        if (type == ResponseConsumer.Void.class) {
+            return new ResponseConsumer.Void();
+        }
+
+        return applicationContext.getBean(type);
     }
 }

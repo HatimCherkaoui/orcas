@@ -1,0 +1,20 @@
+{
+  "priority": 1,
+  "scenarioName": "refund-recovery",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "FAILED_ONCE",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/payments/.*/refund"
+  },
+  "response": {
+    "status": 500,
+    "jsonBody": {
+      "paymentId": "pay-demo-001",
+      "status": "REFUNDED"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  }
+}

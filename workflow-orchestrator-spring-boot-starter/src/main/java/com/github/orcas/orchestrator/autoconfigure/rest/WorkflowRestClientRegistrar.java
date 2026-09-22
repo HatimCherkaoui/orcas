@@ -10,18 +10,28 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
+
 import java.lang.reflect.Method;
 
 public final class WorkflowRestClientRegistrar implements BeanDefinitionRegistryPostProcessor, EnvironmentAware {
     private final org.springframework.beans.factory.BeanFactory beanFactory;
     private Environment environment;
-    public WorkflowRestClientRegistrar(org.springframework.beans.factory.BeanFactory beanFactory) { this.beanFactory = beanFactory; }
-    @Override public void setEnvironment(Environment environment) { this.environment = environment; }
 
-    @Override public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) {
+    public WorkflowRestClientRegistrar(org.springframework.beans.factory.BeanFactory beanFactory) {
+        this.beanFactory = beanFactory;
+    }
+
+    @Override
+    public void setEnvironment(Environment environment) {
+        this.environment = environment;
+    }
+
+    @Override
+    public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) {
         if (!AutoConfigurationPackages.has(beanFactory)) return;
         var scanner = new ClassPathScanningCandidateComponentProvider(false, environment) {
-            @Override protected boolean isCandidateComponent(org.springframework.beans.factory.annotation.AnnotatedBeanDefinition bd) {
+            @Override
+            protected boolean isCandidateComponent(org.springframework.beans.factory.annotation.AnnotatedBeanDefinition bd) {
                 return bd.getMetadata().isIndependent();
             }
         };
@@ -51,7 +61,8 @@ public final class WorkflowRestClientRegistrar implements BeanDefinitionRegistry
                                 .addConstructorArgValue(type)
                                 .addConstructorArgValue(method.getName())
                                 .addConstructorArgValue(step.value())
-                                .addConstructorArgValue(step.mapper()).getBeanDefinition();
+                                .addConstructorArgValue(step.mapper())
+                                .addConstructorArgValue(step.responseSubscriber()).getBeanDefinition();
                         stepBd.setAutowireMode(org.springframework.beans.factory.config.AutowireCapableBeanFactory.AUTOWIRE_CONSTRUCTOR);
                         registry.registerBeanDefinition(stepBean, stepBd);
                     }
@@ -61,5 +72,8 @@ public final class WorkflowRestClientRegistrar implements BeanDefinitionRegistry
             }
         }
     }
-    @Override public void postProcessBeanFactory(org.springframework.beans.factory.config.ConfigurableListableBeanFactory beanFactory) {}
+
+    @Override
+    public void postProcessBeanFactory(org.springframework.beans.factory.config.ConfigurableListableBeanFactory beanFactory) {
+    }
 }

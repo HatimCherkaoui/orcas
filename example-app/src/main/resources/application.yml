@@ -1,103 +1,66 @@
 spring:
   application:
-    name: ${SPRING_APPLICATION_NAME:workflow-example-app}
+    name: order-workflow-example
   datasource:
-    url: jdbc:postgresql://localhost:5432/workflow
-    username: workflow
-    password: workflow
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: workflow-orchestrator
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workflow}
+    username: ${DB_USER:workflow}
+    password: ${DB_PASSWORD:workflow}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
 
 workflow:
   orchestrator:
     topic: workflow.status
-    consumer-group: workflow-orchestrator
+    consumer-group: order-workflow-example
     persistence:
       schema-initialization: true
     async:
       virtual-threads: true
-      concurrency: 32
+      concurrency: 16
     kafka:
       concurrency: 1
       missing-topics-fatal: false
     retry:
       enabled: true
-      max-attempts: 5
-      delay: 2s
+      max-attempts: 3
+      delay: 1s
       steps:
-        notify:
-          max-attempts: 8
-          delay: 1s
-        retry-success-call:
+        initiate-payment:
+          max-attempts: 2
+          delay: 2s
+        notify-payment-success:
           max-attempts: 3
           delay: 1s
-        retry-suspend-call:
-          max-attempts: 2
+        notify-payment-failed:
+          max-attempts: 3
           delay: 1s
-        veryinstableapi-call:
-          max-attempts: 1
-          delay: 1s
+        refund-payment:
+          max-attempts: 3
+          delay: 2s
     service:
       enabled: true
       base-path: /api/orchestrator
       default-page-size: 25
-      kafka:
-        enabled: true
-        timeout-seconds: 5
     rest-client:
-      connect-timeout: 5s
-      response-timeout: 20s
-      max-connections: 100
-      pending-acquire-timeout: 30s
-      cache:
-        enabled: false
-      security:
-        bearer-token: ${DEMO_CUSTOMER_BEARER:}
+      connect-timeout: 3s
+      response-timeout: 10s
+      max-connections: 50
+      pending-acquire-timeout: 5s
     circuit-breaker:
       enabled: true
-      sliding-window-size: 2
-      minimum-number-of-calls: 2
-      failure-rate-threshold: 50
-      wait-duration-in-open-state: 15s
-      permitted-number-of-calls-in-half-open-state: 1
-      instances:
-        veryinstableapi-call:
-          minimum-number-of-calls: 2
-          failure-rate-threshold: 50
-          wait-duration-in-open-state: 15s
-          permitted-number-of-calls-in-half-open-state: 1
 
 server:
   port: 8080
 
 demo:
-  customer:
-    base-url: ${DEMO_CUSTOMER_BASE_URL:https://httpbin.org}
+  payment:
+    base-url: ${DEMO_PAYMENT_BASE_URL:http://localhost:8089}
+  notification:
+    base-url: ${DEMO_NOTIFICATION_BASE_URL:http://localhost:8089}
   inventory:
-    base-url: ${DEMO_INVENTORY_BASE_URL:https://httpbin.org}
-  retry:
-    base-url: ${DEMO_RETRY_BASE_URL:http://localhost:8089}
-  archive:
-    base-url: ${DEMO_ARCHIVE_BASE_URL:http://localhost:8089}
-
-logging:
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
-  level:
-    root: ${LOGGING_LEVEL_ROOT:INFO}
-    com.github.orcas.orchestrator: ${LOGGING_LEVEL_COM_GITHUB_ORCAS_ORCHESTRATOR:INFO}
-    com.github.orcas.demo: ${LOGGING_LEVEL_COM_GITHUB_ORCAS_DEMO:INFO}
-  structured:
-    format:
-      console: ${LOG_FORMAT:}
+    base-url: ${DEMO_INVENTORY_BASE_URL:http://localhost:8089}
 
 management:
   endpoints:
@@ -119,3 +82,7 @@ management:
   otlp:
     tracing:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+
+logging:
+  level:
+    reactor.netty.http.client: DEBUG
