@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" version="1.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.github.orcas</groupId>
+    <artifactId>workflow-orchestrator-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+    </parent>
+
+    <modules>
+        <module>workflow-orchestrator-jdbc-autoconfigure</module>
+        <module>workflow-orchestrator-kafka-autoconfigure</module>
+        <module>workflow-orchestrator-dashboard-service-autoconfigure</module>
+        <module>workflow-orchestrator-spring-boot-starter</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+</project>

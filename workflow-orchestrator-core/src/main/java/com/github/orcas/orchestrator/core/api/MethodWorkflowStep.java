@@ -1,24 +1,19 @@
 package com.github.orcas.orchestrator.core.api;
 
-import com.github.orcas.orchestrator.core.model.Metadata;
-import com.github.orcas.orchestrator.core.model.StepExecutionContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
 import java.lang.reflect.Method;
-import java.util.concurrent.CompletionStage;
-
-/**
- * Adapter that turns an annotated application method into a workflow step.
- */
+import java.util.Objects;
+/** Adapts an annotated application method into a synchronous workflow step. */
 public final class MethodWorkflowStep extends Step {
     private final Object target;
     private final Method method;
     private final String name;
 
-    public MethodWorkflowStep(Object target, Method method, String name) {
-        this.target = target;
-        this.method = method;
-        this.name = name;
+    public MethodWorkflowStep(Object target, Method method) {
+        this.target = Objects.requireNonNull(target, "target");
+        this.method = Objects.requireNonNull(method, "method");
+        this.name = StepNames.of(method);
         method.trySetAccessible();
     }
 
@@ -29,34 +24,7 @@ public final class MethodWorkflowStep extends Step {
 
     @Override
     public StepResult execute(WorkflowContext context) throws Exception {
-        Object result = method.invoke(target, arguments(context));
-        if (result instanceof CompletionStage<?> stage) {
-            Object value = stage.toCompletableFuture().join();
-            return result(context, value);
-        }
-        return result(context, result);
-    }
-
-    private Object[] arguments(WorkflowContext context) {
-        var parameters = method.getParameterTypes();
-        if (parameters.length == 0) return new Object[0];
-        if (parameters.length == 1) {
-            Class<?> type = parameters[0];
-            if (WorkflowContext.class.isAssignableFrom(type)) return new Object[]{context};
-            if (Metadata.class.isAssignableFrom(type)) return new Object[]{context.metadata()};
-            if (StepExecutionContext.class.isAssignableFrom(type)) {
-                var execution = com.github.orcas.orchestrator.core.model.WorkflowContextHolder.step();
-                return new Object[]{execution};
-            }
-            return new Object[]{context.businessInput()};
-        }
-        throw new IllegalArgumentException("Workflow step method must have zero or one parameter: " + method);
-    }
-
-    private StepResult result(WorkflowContext context, Object value) {
-        if (value == null) return StepResult.success(context);
-        if (value instanceof StepResult stepResult) return stepResult;
-        if (value instanceof WorkflowContext workflowContext) return StepResult.success(workflowContext);
-        return StepResult.success(context.withBusinessInput(value));
+        Object value = ReflectiveWorkflowStepSupport.invoke(target, method, context);
+        return StepResults.from(context, ReflectiveWorkflowStepSupport.resolveCompletionStage(value));
     }
 }

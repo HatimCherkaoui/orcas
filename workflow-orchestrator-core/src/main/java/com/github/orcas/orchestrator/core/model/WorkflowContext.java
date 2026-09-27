@@ -2,9 +2,11 @@ package com.github.orcas.orchestrator.core.model;
 
 import java.util.Map;
 
+/** Business input plus transport-neutral workflow metadata. */
 public record WorkflowContext(Object businessInput, Metadata metadata) {
+
     public WorkflowContext {
-        if (metadata == null) metadata = new Metadata();
+        metadata = metadata == null ? new Metadata() : metadata;
     }
 
     public static WorkflowContext of(Object input) {

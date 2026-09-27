@@ -1,0 +1,2 @@
+com.github.orcas.orchestrator.autoconfigure.core.WorkflowCoreAutoConfiguration
+com.github.orcas.orchestrator.autoconfigure.core.WorkflowCorePropertiesAutoConfiguration

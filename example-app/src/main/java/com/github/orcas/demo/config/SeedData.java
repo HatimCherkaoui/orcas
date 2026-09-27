@@ -1,7 +1,9 @@
 package com.github.orcas.demo.config;
 
-import com.github.orcas.demo.domain.*;
-import com.github.orcas.demo.repository.*;
+import com.github.orcas.demo.domain.Customer;
+import com.github.orcas.demo.domain.Inventory;
+import com.github.orcas.demo.repository.CustomerRepository;
+import com.github.orcas.demo.repository.InventoryRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 

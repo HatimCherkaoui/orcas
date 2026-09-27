@@ -4,57 +4,23 @@ import com.github.orcas.orchestrator.core.model.StatusEvent;
 import com.github.orcas.orchestrator.core.model.StepContext;
 import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
-import java.util.List;
+import java.util.Optional;
 
+/** Persistence contract required by the workflow engine. */
 public interface WorkflowStateStore {
-    void start(String id, String workflow, WorkflowContext context);
+    void start(String workflowId, String workflow, WorkflowContext context);
 
-    void record(StatusEvent event);
+    void record(StatusEvent event, String stepTypeClassName);
 
-    default void record(StatusEvent event, String stepTypeClassName) {
-        record(event);
-    }
+    String workflowName(String workflowId);
 
-    default String workflowName(String id) {
-        throw new UnsupportedOperationException("workflowName not implemented");
-    }
+    WorkflowContext context(String workflowId);
 
-    WorkflowContext context(String id);
+    Optional<StepContext> stepContext(String workflowId, String stepName);
 
-    default StepContext stepContext(String workflowId, String stepName) {
-        return null;
-    }
+    void saveStepContext(StepContext context);
 
-    default void saveStepContext(StepContext context) {
-    }
+    void updateContext(String workflowId, WorkflowContext context);
 
-    /**
-     * Returns workflow instance ids whose {@code stepName} is currently suspended and
-     * therefore eligible for a retry/replay.
-     */
-    default List<String> suspendedWorkflowIds(String stepName) {
-        return List.of();
-    }
-
-    /**
-     * Records a single retry attempt for {@code stepName} of workflow instance
-     * {@code workflowId}: increments its persisted retry counter and appends a
-     * {@code RETRY} entry to the step's audit log, so the dashboard can show how
-     * many times a step has been retried and why. No-op by default so state stores
-     * that don't support retry tracking (e.g. in-memory/test implementations)
-     * don't need to implement it.
-     *
-     * @param workflowId workflow instance id
-     * @param stepName   name of the step being retried
-     * @param attempt    the 1-based delivery/replay attempt number, if known (0 if not applicable)
-     * @param reason     a short human-readable reason for the retry (e.g. the root error message)
-     */
-    default void recordRetry(String workflowId, String stepName, int attempt, String reason) {
-    }
-
-    void updateContext(String id, WorkflowContext context);
-
-    default void finish(StatusEvent event) {
-    }
+    void finish(StatusEvent event);
 }
-

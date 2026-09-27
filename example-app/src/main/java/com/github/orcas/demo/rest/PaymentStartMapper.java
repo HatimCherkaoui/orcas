@@ -2,10 +2,11 @@ package com.github.orcas.demo.rest;
 
 import com.github.orcas.orchestrator.core.api.ContextMapper;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
-
+import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.Map;
 
+@Component
 public final class PaymentStartMapper implements ContextMapper<PaymentClient.PaymentStartRequest> {
     @Override
     public PaymentClient.PaymentStartRequest map(StepExecutionContext c) {

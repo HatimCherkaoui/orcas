@@ -1,13 +1,10 @@
 package com.github.orcas.orchestrator.core.model;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Runtime view available to every workflow step.
- * workflowContext is the original/shared workflow context; parentStepContext is
- * the persisted output of the step that triggered this step.
- */
+/** Runtime state exposed to the current workflow step and its adapters. */
 public final class StepExecutionContext {
     private final String workflowId;
     private final String workflow;
@@ -15,16 +12,20 @@ public final class StepExecutionContext {
     private final WorkflowContext workflowContext;
     private final StepContext parentStepContext;
     private final Object input;
-    private volatile Object output;
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
+    private volatile Object output;
 
-    public StepExecutionContext(String workflowId, String workflow, String stepName,
-                                WorkflowContext workflowContext, StepContext parentStepContext,
-                                Object input) {
-        this.workflowId = workflowId;
-        this.workflow = workflow;
-        this.stepName = stepName;
-        this.workflowContext = workflowContext;
+    public StepExecutionContext(
+            String workflowId,
+            String workflow,
+            String stepName,
+            WorkflowContext workflowContext,
+            StepContext parentStepContext,
+            Object input) {
+        this.workflowId = Objects.requireNonNull(workflowId, "workflowId");
+        this.workflow = Objects.requireNonNull(workflow, "workflow");
+        this.stepName = Objects.requireNonNull(stepName, "stepName");
+        this.workflowContext = Objects.requireNonNull(workflowContext, "workflowContext");
         this.parentStepContext = parentStepContext;
         this.input = input;
     }
@@ -66,7 +67,9 @@ public final class StepExecutionContext {
     }
 
     public StepExecutionContext attribute(String key, Object value) {
-        if (key != null && value != null) attributes.put(key, value);
+        if (key != null && value != null) {
+            attributes.put(key, value);
+        }
         return this;
     }
 }

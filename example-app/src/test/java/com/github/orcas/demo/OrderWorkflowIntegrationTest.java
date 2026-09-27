@@ -1,10 +1,17 @@
 package com.github.orcas.demo;
 
-import com.github.orcas.demo.domain.*;
+import com.github.orcas.demo.domain.Customer;
+import com.github.orcas.demo.domain.Inventory;
+import com.github.orcas.demo.domain.Order;
+import com.github.orcas.demo.domain.OrderStatus;
+import com.github.orcas.demo.domain.Payment;
+import com.github.orcas.demo.domain.PaymentStatus;
 import com.github.orcas.demo.repository.CustomerRepository;
 import com.github.orcas.demo.repository.InventoryRepository;
 import com.github.orcas.demo.repository.OrderRepository;
 import com.github.orcas.demo.repository.PaymentRepository;
+import com.github.orcas.orchestrator.core.builder.StepCatalog;
+import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
 import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
@@ -13,9 +20,20 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.kafka.core.KafkaTemplate;
+import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+
+import java.util.Map;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -53,7 +71,13 @@ class OrderWorkflowIntegrationTest {
 
     @Container
     static final KafkaContainer KAFKA =
-            new KafkaContainer(DockerImageName.parse("apache/kafka:4.3.1"));
+            new KafkaContainer(DockerImageName.parse("apache/kafka:4.3.1"))
+                    // Kafka 4.3.x enables share-group infrastructure. Keep its
+                    // single-broker internal topic viable for integration tests.
+                    .withEnv("KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR", "1")
+                    .withEnv("KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR", "1")
+                    .withEnv("KAFKA_SHARE_COORDINATOR_STATE_TOPIC_NUM_PARTITIONS", "1")
+                    .withEnv("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS", "0");
 
     @Container
     static final GenericContainer<?> WIREMOCK =
@@ -69,12 +93,18 @@ class OrderWorkflowIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
-        registry.add("workflow.orchestrator.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
+        registry.add("spring.kafka.consumer.auto-offset-reset", () -> "earliest");
+        registry.add("spring.kafka.consumer.properties.group.protocol", () -> "classic");
+        registry.add("spring.kafka.producer.key-serializer", () -> "org.apache.kafka.common.serialization.StringSerializer");
+        registry.add("spring.kafka.producer.value-serializer", () -> "org.apache.kafka.common.serialization.StringSerializer");
+        registry.add("management.otlp.metrics.export.enabled", () -> "false");
         registry.add("demo.payment.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
         registry.add("demo.notification.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
         registry.add("demo.inventory.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
-        registry.add("management.otlp.tracing.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/traces");
-        registry.add("management.otlp.logs.endpoint", () -> "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080) + "/v1/logs");
+        registry.add("management.opentelemetry.tracing.export.otlp.endpoint",
+                () -> wireMockUrl("/v1/traces"));
+        registry.add("management.opentelemetry.logging.export.otlp.endpoint",
+                () -> wireMockUrl("/v1/logs"));
 
     }
 
@@ -93,6 +123,30 @@ class OrderWorkflowIntegrationTest {
     @Autowired
     PaymentRepository payments;
 
+    @Autowired
+    StepCatalog stepCatalog;
+
+    @Autowired
+    ApplicationContext applicationContext;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
+
+    @Autowired
+    KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    WorkflowEngine workflowEngine;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
+
+    @Autowired
+    WorkflowEventPublisher workflowEventPublisher;
+
     @BeforeAll
     static void beforeAll() throws IOException, InterruptedException {
         RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
@@ -105,7 +159,66 @@ class OrderWorkflowIntegrationTest {
         orders.deleteAll();
         inventory.deleteAll();
         customers.deleteAll();
-        //resetWireMock();
+    }
+
+    @Test
+    void contextProvidesApplicationTransactionManager() {
+        assertThat(transactionManager).isNotNull();
+    }
+
+    @Test
+    void contextProvidesKafkaBrokerConnectivity() throws Exception {
+        System.out.println("Kafka Testcontainer bootstrap servers: " + KAFKA.getBootstrapServers());
+        try (AdminClient admin = AdminClient.create(Map.of(
+                AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers()))) {
+            assertThat(admin.describeCluster().nodes().get().stream()).isNotEmpty();
+        }
+    }
+
+    @Test
+    void launchWorkflowAspectIsAppliedToOrderController() {
+        assertThat(AopUtils.isAopProxy(applicationContext.getBean(com.github.orcas.demo.controller.OrderController.class)))
+                .as("@LaunchWorkflow controller must be proxied")
+                .isTrue();
+        assertThat(workflowEngine).isNotNull();
+    }
+
+    @Test
+    void workflowLaunchPersistsInitialState() {
+        Customer customer = customer();
+        postApp("/orders", """
+                {
+                  "customerId": %d,
+                  "items": []
+                }
+                """.formatted(customer.getId())).statusCode(202);
+        await(() -> jdbcTemplate.queryForObject("select count(*) from workflow", Integer.class) > 0);
+    }
+
+    @Test
+    void contextProvidesKafkaInfrastructure() {
+        assertThat(kafkaTemplate).isNotNull();
+        assertThat(workflowEventPublisher)
+                .isInstanceOf(com.github.orcas.orchestrator.kafka.autoconfigure.KafkaWorkflowEventPublisher.class);
+        assertThat(applicationBean(com.github.orcas.orchestrator.kafka.autoconfigure.WorkflowEventConsumer.class)).isNotNull();
+        assertThat(kafkaListenerEndpointRegistry.getListenerContainers())
+                .as("ORCAS Kafka listeners")
+                .hasSize(2);
+    }
+
+    private <T> T applicationBean(Class<T> type) {
+        return applicationContext.getBean(type);
+    }
+
+    @Test
+    void discoversDeclarativeRestWorkflowSteps() {
+        assertThat(stepCatalog.names())
+                .contains(
+                        "check-external-inventory",
+                        "initiate-payment",
+                        "refund-payment",
+                        "notify-payment-success",
+                        "notify-payment-failed");
     }
 
     @Test
@@ -223,6 +336,7 @@ class OrderWorkflowIntegrationTest {
         assertThat(payments.findByOrderId(order.getId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
         awaitWireMockRequest("/payments/pay-it-success/refund");
+        assertThat(wireMockCountAsInt("/payments/pay-it-success/refund")).isEqualTo(1);
     }
 
     private Customer customer() {
@@ -287,22 +401,33 @@ class OrderWorkflowIntegrationTest {
         return "http://" + WIREMOCK.getHost() + ":" + WIREMOCK.getMappedPort(8080);
     }
 
-    private static void resetWireMock() {
-        given().baseUri(wiremockUrl())
-                .when().post("/__admin/mappings/reset")
-                .then().statusCode(200);
-        //given().baseUri(wiremockUrl())
-        //        .when().post("/__admin/requests/reset")
-        //        .then().statusCode(200);
+    private static String wireMockUrl(String path) {
+        return wiremockUrl() + path;
     }
 
     private static void configureWireMock() throws IOException, InterruptedException {
         String notification_failed = Files.readString(Path.of("../wiremock/mappings/notification-failed.json"));
         String notification_success = Files.readString(Path.of("../wiremock/mappings/notification-success.json"));
         String payment = Files.readString(Path.of("../wiremock/mappings/payment.json"));
-        String payment_refund = Files.readString(Path.of("../wiremock/mappings/refund.json"));
-        String payment_refund2 = Files.readString(Path.of("../wiremock/mappings/refund-2.json"));
-        String payment_refund3 = Files.readString(Path.of("../wiremock/mappings/refund-3.json"));
+
+        String refundSuccess = """
+                {
+                  "request": {
+                    "method": "POST",
+                    "urlPathPattern": "/payments/.*/refund"
+                  },
+                  "response": {
+                    "status": 200,
+                    "jsonBody": {
+                      "paymentId": "pay-it-success",
+                      "status": "REFUNDED"
+                    },
+                    "headers": {
+                      "Content-Type": "application/json"
+                    }
+                  }
+                }
+                """;
 
         String otlpTraces = """
                 {"request":{"method":"POST","urlPath":"/v1/traces"},"response":{"status":200}}
@@ -315,9 +440,7 @@ class OrderWorkflowIntegrationTest {
                 notification_failed,
                 notification_success,
                 payment,
-                payment_refund,
-                payment_refund2,
-                payment_refund3,
+                refundSuccess,
                 otlpTraces,
                 otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(wiremockUrl() + "/__admin/mappings"))

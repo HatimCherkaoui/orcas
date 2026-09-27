@@ -1,16 +1,16 @@
 package com.github.orcas.orchestrator.core.annotation;
 
-import java.lang.annotation.*;
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-/**
- * Declares a class as the definition of a workflow. Classes annotated with
- * {@code @Workflow} are typically scanned at startup and their routing table built
- * with {@code com.github.orcas.orchestrator.core.builder.PipelineBuilder}.
- */
+/** Declares a class as a workflow definition. */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface Workflow {
-    /** Unique workflow name, used to look it up in the {@code WorkflowRegistry}. */
-    String value();
+    /** Optional workflow name. The class simple name is used when empty. */
+    String value() default "";
 }

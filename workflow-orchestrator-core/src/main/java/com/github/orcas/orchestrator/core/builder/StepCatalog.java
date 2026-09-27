@@ -1,39 +1,49 @@
 package com.github.orcas.orchestrator.core.builder;
 
-import com.github.orcas.orchestrator.core.annotation.WorkflowStep;
+import com.github.orcas.orchestrator.core.api.WorkflowStep;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
+/** Catalog of executable steps keyed by the annotation-derived step name. */
 public final class StepCatalog {
-    private final Map<String, com.github.orcas.orchestrator.core.api.WorkflowStep> steps = new LinkedHashMap<>();
+    private final Map<String, WorkflowStep> steps = new LinkedHashMap<>();
 
-    public StepCatalog(Collection<? extends com.github.orcas.orchestrator.core.api.WorkflowStep> beans) {
-        registerAll(beans);
+    public StepCatalog(Collection<? extends WorkflowStep> steps) {
+        registerAll(steps);
     }
 
-    public StepCatalog(Collection<? extends com.github.orcas.orchestrator.core.api.WorkflowStep> beans,
-                       Collection<? extends com.github.orcas.orchestrator.core.api.WorkflowStep> discovered) {
-        registerAll(beans);
+    public StepCatalog(Collection<? extends WorkflowStep> steps,
+                       Collection<? extends WorkflowStep> discovered) {
+        registerAll(steps);
         registerAll(discovered);
     }
 
-    public void registerAll(Collection<? extends com.github.orcas.orchestrator.core.api.WorkflowStep> beans) {
-        for (var s : beans) {
-            var a = s.getClass().getAnnotation(WorkflowStep.class);
-            var n = a != null ? a.value() : s.name();
-            if (n == null || n.isBlank()) throw new IllegalArgumentException("Step name/alias required: " + s.getClass().getName());
-            if (steps.putIfAbsent(n, s) != null) throw new IllegalStateException("Duplicate step: " + n);
+    public void registerAll(Collection<? extends WorkflowStep> values) {
+        for (WorkflowStep step : values) {
+            String name = step.name();
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("Step name is required: " + step.getClass().getName());
+            }
+            if (steps.putIfAbsent(name, step) != null) {
+                throw new IllegalStateException("Duplicate step: " + name);
+            }
         }
     }
 
-    public com.github.orcas.orchestrator.core.api.WorkflowStep get(String n) {
-        var s = steps.get(n);
-        if (s == null) throw new IllegalArgumentException("Unknown step: " + n);
-        return s;
+    public WorkflowStep get(String name) {
+        var step = steps.get(name);
+        if (step == null) throw new IllegalArgumentException("Unknown step: " + name);
+        return step;
     }
 
-    public Set<String> aliases() { return Set.copyOf(steps.keySet()); }
+    public WorkflowStep get(Class<? extends WorkflowStep> type) {
+        return get(com.github.orcas.orchestrator.core.api.StepNames.of(type));
+    }
+
+    public Set<String> names() {
+        return Set.copyOf(steps.keySet());
+    }
 }

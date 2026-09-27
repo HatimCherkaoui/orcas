@@ -1,0 +1,64 @@
+package com.github.orcas.orchestrator.kafka.autoconfigure;
+
+import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
+import com.github.orcas.orchestrator.service.api.WorkflowReplayPublisher;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.apache.kafka.clients.admin.NewTopic;
+import tools.jackson.databind.ObjectMapper;
+
+/** Kafka publisher and consumer for workflow status events. */
+@AutoConfiguration(afterName = "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration")
+@ConditionalOnClass(KafkaTemplate.class)
+@ConditionalOnProperty(prefix = "workflow.orchestrator.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)
+@EnableConfigurationProperties(WorkflowKafkaProperties.class)
+public final class WorkflowKafkaAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(WorkflowEventPublisher.class)
+    WorkflowEventPublisher kafkaWorkflowEventPublisher(
+            KafkaTemplate<String, String> template,
+            org.springframework.beans.factory.ObjectProvider<ObjectMapper> mapperProvider,
+            WorkflowKafkaProperties properties) {
+        return new KafkaWorkflowEventPublisher(template, mapperProvider.getObject(), properties.getTopic());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(WorkflowReplayPublisher.class)
+    WorkflowReplayPublisher kafkaWorkflowReplayPublisher(
+            KafkaTemplate<String, String> template,
+            ObjectMapper mapper,
+            WorkflowKafkaProperties properties) {
+        return new KafkaWorkflowReplayPublisher(template, mapper, properties);
+    }
+
+    @Bean
+    NewTopic workflowStatusTopic(WorkflowKafkaProperties properties) {
+        return new NewTopic(properties.getTopic(), 1, (short) 1);
+    }
+
+    @Bean
+    NewTopic workflowReplayTopic(WorkflowKafkaProperties properties) {
+        return new NewTopic(properties.getReplayTopic(), 1, (short) 1);
+    }
+
+    @Bean(name = "workflowKafkaListenerContainerFactory")
+    ConcurrentKafkaListenerContainerFactory<String, String>
+    workflowKafkaListenerContainerFactory(
+            ConsumerFactory<String, String> factory,
+            WorkflowKafkaProperties properties) {
+        var listener = new ConcurrentKafkaListenerContainerFactory<String, String>();
+        listener.setConsumerFactory(factory);
+        listener.setConcurrency(properties.getConcurrency());
+        listener.getContainerProperties().setMissingTopicsFatal(properties.isMissingTopicsFatal());
+        return listener;
+    }
+
+}

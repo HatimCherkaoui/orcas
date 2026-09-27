@@ -1,8 +1,7 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+<?xml version='1.0' encoding='UTF-8'?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
+<parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>4.1.1</version>
@@ -10,46 +9,404 @@
     </parent>
     <groupId>com.github.orcas</groupId>
     <artifactId>workflow-orchestrator</artifactId>
-    <version>0.4.0-SNAPSHOT</version>
+    <version>0.6.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <modules>
-        <module>workflow-orchestrator-core</module>
-        <module>workflow-orchestrator-spring-boot-starter</module>
-        <module>workflow-orchestrator-service-starter</module>
-        <module>example-app</module>
-    </modules>
+    <name>Workflow Orchestrator</name>
+    <description>Modular Java workflow orchestration library with optional Spring Boot integrations.</description>
+    <url>https://github.com/HatimCherkaoui/orcas</url>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>Hatim Cherkaoui</name>
+            <organization>Orcas</organization>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:https://github.com/HatimCherkaoui/orcas.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/HatimCherkaoui/orcas.git</developerConnection>
+        <url>https://github.com/HatimCherkaoui/orcas</url>
+        <tag>HEAD</tag>
+    </scm>
     <properties>
         <java.version>25</java.version>
-        <maven.compiler.release>25</maven.compiler.release>
-        <testcontainers.version>2.0.5</testcontainers.version>
-        <rest-assured.version>6.0.1</rest-assured.version>
-        <awaitility.version>4.3.0</awaitility.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <spring-boot.version>4.1.1</spring-boot.version>
         <resilience4j.version>2.4.0</resilience4j.version>
-        <wiremock.image>wiremock/wiremock:3.13.2</wiremock.image>
+        <testcontainers.version>2.0.5</testcontainers.version>
+        <rest-assured.version>6.0.0</rest-assured.version>
+        <archunit.version>1.4.1</archunit.version>
+        <maven.compiler.plugin.version>3.14.1</maven.compiler.plugin.version>
+        <maven.surefire.version>3.5.3</maven.surefire.version>
+        <maven.failsafe.version>3.5.3</maven.failsafe.version>
+        <maven.enforcer.version>3.6.3</maven.enforcer.version>
+        <maven.source.version>3.4.0</maven.source.version>
+        <maven.javadoc.version>3.12.0</maven.javadoc.version>
+        <maven.gpg.version>3.2.8</maven.gpg.version>
+        <central.publishing.version>0.11.0</central.publishing.version>
+        <opentelemetry.version>1.62.0</opentelemetry.version>
+        <opentelemetry.instrumentation.version>2.28.1-alpha</opentelemetry.instrumentation.version>
+        <mockito.version>5.23.0</mockito.version>
+        <maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
     </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.rest-assured</groupId>
+                <artifactId>rest-assured</artifactId>
+                <version>${rest-assured.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.tngtech.archunit</groupId>
+                <artifactId>archunit-junit5</artifactId>
+                <version>${archunit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-bom</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-spring-boot-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-rest</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-rest-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-rest-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-resilience</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-resilience-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-resilience-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-jdbc-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-jdbc-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-kafka-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-kafka-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-observability-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-observability-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-service-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-service-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-dashboard-service</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-dashboard-service-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.orcas</groupId>
+                <artifactId>workflow-orchestrator-dashboard-service-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.opentelemetry.instrumentation</groupId>
+                <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+                <version>${opentelemetry.instrumentation.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+    <modules>
+        <module>workflow-orchestrator-bom</module>
+        <module>workflow-orchestrator-core</module>
+        <module>workflow-orchestrator-spring-boot-autoconfigure</module>
+        <module>workflow-orchestrator-spring-boot-starter</module>
+        <module>workflow-orchestrator-rest</module>
+        <module>workflow-orchestrator-rest-autoconfigure</module>
+        <module>workflow-orchestrator-rest-starter</module>
+        <module>workflow-orchestrator-resilience</module>
+        <module>workflow-orchestrator-resilience-autoconfigure</module>
+        <module>workflow-orchestrator-resilience-starter</module>
+        <module>workflow-orchestrator-jdbc-autoconfigure</module>
+        <module>workflow-orchestrator-jdbc-starter</module>
+        <module>workflow-orchestrator-kafka-autoconfigure</module>
+        <module>workflow-orchestrator-kafka-starter</module>
+        <module>workflow-orchestrator-observability-autoconfigure</module>
+        <module>workflow-orchestrator-observability-starter</module>
+        <module>workflow-orchestrator-service</module>
+        <module>workflow-orchestrator-service-autoconfigure</module>
+        <module>workflow-orchestrator-service-starter</module>
+        <module>workflow-orchestrator-dashboard-service</module>
+        <module>workflow-orchestrator-dashboard-service-autoconfigure</module>
+        <module>workflow-orchestrator-dashboard-service-starter</module>
+        <module>workflow-orchestrator-management-service</module>
+        <module>example-app</module>
+    </modules>
     <build>
         <pluginManagement>
             <plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.14.1</version>
+                    <version>${maven.compiler.plugin.version}</version>
                     <configuration>
-                        <release>25</release>
+                        <release>${maven.compiler.release}</release>
                         <parameters>true</parameters>
+                        <encoding>${project.build.sourceEncoding}</encoding>
                     </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.4</version>
+                    <version>${maven.surefire.version}</version>
+                    <configuration>
+                        <useModulePath>false</useModulePath>
+                        <argLine>-javaagent:${org.mockito:mockito-core:jar} --enable-native-access=ALL-UNNAMED</argLine>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${maven.failsafe.version}</version>
+                    <configuration>
+                        <useModulePath>false</useModulePath>
+                        <argLine>-javaagent:${org.mockito:mockito-core:jar} --enable-native-access=ALL-UNNAMED</argLine>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
-                    <version>4.1.1</version>
+                    <version>${spring-boot.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>${maven.dependency.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>expose-mockito-agent</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                        <configuration>
+                            <extraArtifacts>
+                                <extraArtifact>
+                                    <groupId>org.mockito</groupId>
+                                    <artifactId>mockito-core</artifactId>
+                                    <version>${mockito.version}</version>
+                                </extraArtifact>
+                            </extraArtifacts>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${maven.enforcer.version}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-runtime</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[25,27)</version>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.9.6,)</version>
+                                </requireMavenVersion>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>release-metadata</id>
+            <activation>
+                <property>
+                    <name>release</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven.source.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven.javadoc.version}</version>
+                        <configuration>
+                            <doclint>all</doclint>
+                            <failOnWarnings>false</failOnWarnings>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven.gpg.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central.publishing.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>false</autoPublish>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

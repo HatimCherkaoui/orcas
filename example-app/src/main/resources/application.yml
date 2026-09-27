@@ -5,6 +5,14 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workflow}
     username: ${DB_USER:workflow}
     password: ${DB_PASSWORD:workflow}
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   jpa:
     hibernate:
       ddl-auto: update
@@ -12,16 +20,20 @@ spring:
 
 workflow:
   orchestrator:
-    topic: workflow.status
-    consumer-group: order-workflow-example
-    persistence:
+    jdbc:
+      enabled: true
       schema-initialization: true
+    kafka:
+      enabled: true
+      topic: workflow.status
+      consumer-group: order-workflow-example
+      replay-topic: workflow.replay
+      replay-consumer-group: order-workflow-example-replay
+      concurrency: 1
+      missing-topics-fatal: false
     async:
       virtual-threads: true
       concurrency: 16
-    kafka:
-      concurrency: 1
-      missing-topics-fatal: false
     retry:
       enabled: true
       max-attempts: 3
@@ -39,10 +51,6 @@ workflow:
         refund-payment:
           max-attempts: 3
           delay: 2s
-    service:
-      enabled: true
-      base-path: /api/orchestrator
-      default-page-size: 25
     rest-client:
       connect-timeout: 3s
       response-timeout: 10s
@@ -79,9 +87,15 @@ management:
     baggage:
       correlation:
         enabled: true
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/logs}
 
 logging:
   level:

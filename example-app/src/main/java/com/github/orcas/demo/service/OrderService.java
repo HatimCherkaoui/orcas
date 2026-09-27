@@ -1,7 +1,10 @@
 package com.github.orcas.demo.service;
 
 import com.github.orcas.demo.domain.*;
-import com.github.orcas.demo.repository.*;
+import com.github.orcas.demo.repository.CustomerRepository;
+import com.github.orcas.demo.repository.InventoryRepository;
+import com.github.orcas.demo.repository.OrderRepository;
+import com.github.orcas.demo.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +33,7 @@ public class OrderService {
         Order order = new Order(customer, OrderStatus.PENDING_PAYMENT, BigDecimal.ZERO);
         BigDecimal total = BigDecimal.ZERO;
         for (CreateOrderItem item : command.items()) {
-            Inventory stock = inventory.findBySku(item.sku())
+            Inventory stock = inventory.findBySkuForUpdate(item.sku())
                     .orElseThrow(() -> new IllegalArgumentException("Unknown SKU: " + item.sku()));
             if (stock.getQuantity() < item.quantity())
                 throw new IllegalStateException("Insufficient inventory for " + item.sku());
@@ -89,7 +92,7 @@ public class OrderService {
 
     private void releaseInventory(Order order) {
         for (OrderItem item : order.getItems()) {
-            Inventory stock = inventory.findBySku(item.getSku()).orElseThrow();
+            Inventory stock = inventory.findBySkuForUpdate(item.getSku()).orElseThrow();
             stock.setQuantity(stock.getQuantity() + item.getQuantity());
         }
     }
