@@ -1,74 +1,73 @@
 import { Handle, Position } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Circle, Clock3, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Circle, Clock3, Play, RotateCcw, SkipForward, Zap } from 'lucide-react';
 
-/**
- * Visual metadata for every status the engine actually emits (`Status.java`:
- * INIT, STARTED, RUNNING, RUNNING_ASYNC, SUCCESS, FAILED, SUSPENDED, SKIPPED),
- * plus the dashboard-only `PENDING` sentinel used for steps the graph knows
- * about (via route metadata) but that haven't recorded any state yet. Steps
- * must always resolve to their *own* status here - never silently fall back
- * to the "not reached" PENDING look, or a resolved step (e.g. INIT once it
- * moves on) would incorrectly still read as pending.
- */
 const STATE_META = {
-  INIT: { icon: Circle, className: 'init' },
-  STARTED: { icon: Clock3, className: 'started' },
-  RUNNING: { icon: Play, className: 'running' },
-  RUNNING_ASYNC: { icon: Play, className: 'running' },
-  SUCCESS: { icon: CheckCircle2, className: 'success' },
-  FAILED: { icon: AlertCircle, className: 'failed' },
-  SUSPENDED: { icon: AlertCircle, className: 'suspended' },
-  SKIPPED: { icon: SkipForward, className: 'skipped' },
-  PENDING: { icon: Clock3, className: 'pending' },
+  INIT: { icon: Circle, className: 'init', label: 'Init' },
+  STARTED: { icon: Clock3, className: 'started', label: 'Started' },
+  RUNNING: { icon: Play, className: 'running', label: 'Running', pulse: true },
+  RUNNING_ASYNC: { icon: Play, className: 'running', label: 'Running Async', pulse: true },
+  SUCCESS: { icon: CheckCircle2, className: 'success', label: 'Success' },
+  FAILED: { icon: AlertCircle, className: 'failed', label: 'Failed' },
+  SUSPENDED: { icon: AlertCircle, className: 'suspended', label: 'Suspended' },
+  SKIPPED: { icon: SkipForward, className: 'skipped', label: 'Skipped' },
+  PENDING: { icon: Clock3, className: 'pending', label: 'Pending' },
 };
 
-/** Custom React Flow node rendering a single workflow step as a compact status card. */
+/** Custom React Flow node rendering a single workflow step as a modern monitoring card. */
 export function StepNode({ data, selected }) {
-  const state = String(data.step.state || 'PENDING').toUpperCase();
-  // Fall back to a status-derived class (not PENDING) for any future/unknown
-  // status name, so the node still reflects its real state dynamically
-  // instead of looking indistinguishable from a step that hasn't started.
-  const meta = STATE_META[state] || { icon: Clock3, className: state.toLowerCase() };
+  const step = data?.step || {};
+  const stepConfig = data?.stepConfig || {};
+
+  const stepName = step.stepName || step.name || 'Unnamed Step';
+  const rawState = (step.state || step.status || 'PENDING').toUpperCase();
+  const meta = STATE_META[rawState] || { icon: Clock3, className: rawState.toLowerCase(), label: rawState };
   const Icon = meta.icon;
-  // Number of automatic retries recorded for this step by the engine. Only shown
-  // when non-zero so healthy steps stay visually clean.
-  const retries = Number(data.step.retryCount) || 0;
-  const hasCircuitBreaker = Boolean(data.stepConfig?.circuitBreakerEnabled);
+
+  const retries = Number(step.retryCount ?? step.retries ?? 0);
+  const maxAttempts = Number(stepConfig.maxAttempts || 3);
+  const hasCircuitBreaker = Boolean(stepConfig.circuitBreakerEnabled || step.circuitBreaker);
+  const cbState = step.circuitBreakerState || step.circuitBreaker || stepConfig.circuitBreakerState || (hasCircuitBreaker ? 'CLOSED' : null);
 
   return (
-    <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''}`}>
+    <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''} ${meta.pulse ? 'node-pulse' : ''}`}>
       <Handle type="target" position={Position.Left} />
+      
       <div className="rf-step-icon">
         <Icon size={15} />
       </div>
+
       <div className="rf-step-body">
         <div className="rf-step-title-row">
-          <strong>{data.step.stepName}</strong>
+          <strong title={stepName}>{stepName}</strong>
           {hasCircuitBreaker && (
             <span
-              className="rf-step-circuit-badge"
-              title={`Circuit breaker: ${data.stepConfig?.circuitBreakerName || 'configured'}`}
-              aria-label="Circuit breaker enabled"
+              className={`rf-step-circuit-badge cb-${String(cbState).toLowerCase()}`}
+              title={`Circuit Breaker: ${cbState} (${stepConfig.circuitBreakerName || 'default'})`}
+              aria-label="Circuit breaker status"
             >
-              c
+              <Zap size={10} />
             </span>
           )}
         </div>
-        <span className="rf-step-state">{state.replace(/_/g, ' ')}</span>
+        <div className="rf-step-meta-row">
+          <span className="rf-step-state">{meta.label}</span>
+          {step.duration != null && <span className="rf-step-duration mono">{step.duration}ms</span>}
+        </div>
       </div>
+
       {retries > 0 && (
         <span
           className="rf-step-retries"
-          title={`${retries} automatic ${retries === 1 ? 'retry' : 'retries'} recorded`}
+          title={`${retries} retry attempt(s) recorded (Max: ${maxAttempts})`}
         >
-          <RotateCcw size={11} />
-          {retries}
+          <RotateCcw size={10} />
+          <span>{retries}/{maxAttempts}</span>
         </span>
       )}
+
       <Handle type="source" position={Position.Right} />
     </div>
   );
 }
 
 export const nodeTypes = { stepNode: StepNode };
-

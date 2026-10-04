@@ -4,7 +4,7 @@ services:
   postgres:
     image: postgres:18.6
     container_name: workflow-postgres
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
     environment:
       POSTGRES_DB: orchestrator
@@ -15,17 +15,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U orchestrator -d orchestrator"]
+      test: [ "CMD-SHELL", "pg_isready -U orchestrator -d orchestrator" ]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 10s
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   kafka:
     image: apache/kafka:4.3.1
     container_name: workflow-kafka
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
     environment:
       KAFKA_NODE_ID: 1
@@ -48,19 +48,19 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
       interval: 10s
       timeout: 10s
       retries: 20
       start_period: 15s
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   workflow-management-service:
     build:
       context: .
       dockerfile: workflow-orchestrator-management-service/Dockerfile
     container_name: workflow-management-service
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -81,21 +81,21 @@ services:
       WORKFLOW_ORCHESTRATOR_KAFKA_ENABLED: "true"
       JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null"]
+      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null" ]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 30s
     ports:
       - "8081:8081"
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   example-app:
     build:
       context: .
       dockerfile: example-app/Dockerfile
     container_name: workflow-example-app
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -123,120 +123,154 @@ services:
       LOG_FORMAT: ecs
     ports:
       - "8080:8080"
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   dashboard:
     build:
       context: ./workflow-orchestrator-dashboard
       dockerfile: Dockerfile
     container_name: workflow-dashboard
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
     depends_on:
       workflow-management-service:
         condition: service_healthy
     ports:
       - "5173:80"
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   # External API mocks are needed by the example workflow only in PROD.
   wiremock:
     image: wiremock/wiremock:3.13.2
     container_name: workflow-wiremock
-    profiles: [dev, prod]
+    profiles: [ dev, prod ]
     restart: unless-stopped
-    command: ["--global-response-templating", "--verbose"]
+    command: [ "--global-response-templating", "--verbose" ]
     volumes:
       - ./wiremock:/home/wiremock:ro
     ports:
       - "8089:8080"
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: workflow-elasticsearch
-    profiles: [prod]
+    profiles: [ prod ]
     restart: unless-stopped
     environment:
-      discovery.type: single-node
-      xpack.security.enabled: "true"
-      ELASTIC_PASSWORD: adminpassword
-      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=adminpassword
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: [ "CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 20s
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   es-setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: workflow-es-setup
-    profiles: [prod]
+    profiles: [ prod ]
     depends_on:
       elasticsearch:
         condition: service_healthy
-    networks: [workflow-net]
+    networks: [ workflow-net ]
     command: >
       bash -c "
-        until curl -s -u elastic:adminpassword -X POST http://elasticsearch:9200/_security/user/kibana_system/_password
-        -H 'Content-Type: application/json'
-        -d '{\"password\":\"adminpassword\"}' | grep -q '{}'; do
-          echo 'Waiting to set kibana_system password...'; sleep 3;
+        until curl -s -u elastic:adminpassword -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -H 'Content-Type: application/json' -d '{\"password\":\"adminpassword\"}' | grep -q '{}'; do
+          echo 'Waiting to set kibana_system password...'
+          sleep 3
         done;
-        curl -s -u elastic:adminpassword -X PUT http://elasticsearch:9200/_index_template/otel_data_streams
-        -H 'Content-Type: application/json'
-        -d '{\"index_patterns\":[\"traces-*\",\"logs-*\",\"metrics-*\"],\"data_stream\":{}}';
+        echo 'Creating OTel Data Stream Template...'
+        curl -s -u elastic:adminpassword -X PUT http://elasticsearch:9200/_index_template/otel_data_streams -H 'Content-Type: application/json' -d '{\"index_patterns\":[\"traces-*\",\"logs-*\",\"metrics-*\"],\"data_stream\":{}}'
         echo 'es-setup completed successfully.'
       "
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.15.0
     container_name: workflow-kibana
-    profiles: [prod]
+    profiles: [ prod ]
     restart: unless-stopped
     ports:
       - "5601:5601"
     environment:
-      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-      ELASTICSEARCH_USERNAME: kibana_system
-      ELASTICSEARCH_PASSWORD: adminpassword
-      XPACK_FLEET_ISOUTOFTHEBOXENABLED: "false"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=adminpassword
+      - XPACK_FLEET_ISOUTOFTHEBOXENABLED=false
     depends_on:
       es-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      test: [ "CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'" ]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 30s
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
   kibana-init:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: workflow-kibana-init
-    profiles: [prod]
+    profiles: [ prod ]
     depends_on:
       kibana:
         condition: service_healthy
-    networks: [workflow-net]
-    entrypoint: ["/bin/bash", "-c"]
+    networks: [ workflow-net ]
+    entrypoint: [ "/bin/bash", "-c" ]
     command:
       - |
-        curl -s -X POST "http://kibana:5601/api/data_views/data_view" -u elastic:adminpassword -H "kbn-xsrf: true" -H "Content-Type: application/json" -d '{"data_view":{"title":"traces-*,logs-*,metrics-*","name":"orchestrator","timeFieldName":"@timestamp"}}'
-        curl -s -X POST "http://kibana:5601/api/spaces/space" -u elastic:adminpassword -H "kbn-xsrf: true" -H "Content-Type: application/json" -d '{"id":"springboot-example-app","name":"Spring Boot Example App","description":"Observability space for OTLP traces, logs, and metrics","color":"#00BFB3"}' || true
-        curl -s -X POST "http://kibana:5601/s/springboot-example-app/api/data_views/data_view" -u elastic:adminpassword -H "kbn-xsrf: true" -H "Content-Type: application/json" -d '{"data_view":{"title":"traces-*,logs-*,metrics-*","name":"orchestrator","timeFieldName":"@timestamp"}}'
+        echo "--> 1. Creating Data Views in Default Space..."
+        curl -s -X POST "http://kibana:5601/api/data_views/data_view" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "data_view": {
+              "title": "traces-*,logs-*,metrics-*",
+              "name": "orchestrator",
+              "timeFieldName": "@timestamp"
+            }
+          }'
+
+        echo "--> 2. Creating Custom Space: Spring Boot Example App..."
+        curl -s -X POST "http://kibana:5601/api/spaces/space" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "id": "springboot-example-app",
+            "name": "Spring Boot Example App",
+            "description": "Observability space for OTLP traces, logs, and metrics",
+            "color": "#00BFB3"
+          }'
+
+        echo "--> 3. Creating Data Views in custom Space..."
+        curl -s -X POST "http://kibana:5601/s/springboot-example-app/api/data_views/data_view" \
+          -u elastic:adminpassword \
+          -H "kbn-xsrf: true" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "data_view": {
+              "title": "traces-*,logs-*,metrics-*",
+              "name": "orchestrator",
+              "timeFieldName": "@timestamp"
+            }
+          }'
+
+        echo "--> Kibana auto-configuration completed!"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: workflow-otel-collector
-    profiles: [prod]
+    profiles: [ prod ]
     restart: unless-stopped
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -246,7 +280,7 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
-    networks: [workflow-net]
+    networks: [ workflow-net ]
 
 volumes:
   postgres_data:

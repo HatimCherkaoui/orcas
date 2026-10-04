@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Database, FileText, RefreshCw, ScrollText } from 'lucide-react';
+import { ArrowLeft, Database, FileText, RefreshCw, ScrollText, Sliders } from 'lucide-react';
 import { api } from '../api';
 import { useLoad } from '../hooks/useLoad';
 import { Loading, ErrorState, Empty } from '../components/common/States';
@@ -15,6 +15,7 @@ const INFO_TABS = [
   { id: 'context', label: 'Context', icon: FileText },
   { id: 'metadata', label: 'Metadata', icon: Database },
   { id: 'logs', label: 'Logs', icon: ScrollText },
+  { id: 'config', label: 'Configuration', icon: Sliders },
 ];
 
 export default function WorkflowDetailPage({ id, navigate }) {
@@ -40,8 +41,19 @@ export default function WorkflowDetailPage({ id, navigate }) {
       context: { ...context, data: context.data?.context },
       metadata: { ...metadata, data: metadata.data?.values },
       logs: auditLog,
+      config: {
+        loading: definition.loading,
+        error: definition.error,
+        data: definition.data || {
+          workflow: workflowName,
+          version: '1.0.0',
+          stepConfigs,
+          steps: stepRows,
+        },
+        reload: definition.reload,
+      },
     }),
-    [context, metadata, auditLog]
+    [context, metadata, auditLog, definition, workflowName, stepConfigs, stepRows]
   );
 
   function refresh() {

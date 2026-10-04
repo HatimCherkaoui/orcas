@@ -49,7 +49,7 @@ workflow:
           max-attempts: 3
           delay: 1s
         refund-payment:
-          max-attempts: 3
+          max-attempts: 1
           delay: 2s
     rest-client:
       connect-timeout: 3s
@@ -100,3 +100,10 @@ management:
 logging:
   level:
     reactor.netty.http.client: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.kafka: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.springframework.boot.autoconfigure: DEBUG
+    org.springframework.boot: DEBUG
+    org.springframework: ERROR
+    com.github.ghik.orcas: DEBUG

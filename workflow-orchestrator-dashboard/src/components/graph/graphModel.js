@@ -32,58 +32,123 @@ function makeEdge(source, target, mode, key, triggerStatus) {
     source,
     target,
     type: 'smoothstep',
-    animated: Boolean(style.animated),
+    animated: Boolean(style.animated || triggerStatus === 'RUNNING'),
     className: `rf-edge-${style.className}`,
     label: triggerStatus && triggerStatus !== 'SUCCESS' ? triggerStatus : style.label || undefined,
   };
 }
 
 /**
- * Converts a workflow definition (`{ routes: [{ triggerStep, mode, branches, joinStep }] }`)
- * plus the live step states recorded so far into React Flow nodes/edges. Falls back to a
- * simple sequential chain of recorded steps when no route metadata is available.
+ * Converts a workflow definition and step states into React Flow nodes and edges.
+ * Handles both routes-based definitions, dependencies-based definitions,
+ * and falls back cleanly to sequential order.
  */
 export function buildGraph(steps, definition) {
-  const stepByName = new Map((steps || []).map((step) => [step.stepName, step]));
+  const stepList = Array.isArray(steps) ? steps : steps?.content || steps?.items || [];
+  const stepByName = new Map(
+    stepList.map((step) => {
+      const name = step.stepName || step.name;
+      const state = (step.state || step.status || 'PENDING').toUpperCase();
+      return [name, { ...step, stepName: name, state }];
+    })
+  );
+
   const stepConfigs = definition?.stepConfigs || {};
-  const stepOrFallback = (name) => stepByName.get(name) || { stepName: name, state: 'PENDING' };
   const routes = definition?.routes || [];
+  const defSteps = definition?.steps || [];
+
+  const stepOrFallback = (name) => {
+    const found = stepByName.get(name);
+    if (found) return found;
+    return {
+      stepName: name,
+      name,
+      state: 'PENDING',
+      status: 'PENDING',
+      retryCount: 0,
+      retries: 0
+    };
+  };
+
+  const getEffectiveConfig = (name) => {
+    if (stepConfigs[name]) return stepConfigs[name];
+    const s = stepOrFallback(name);
+    return {
+      async: Boolean(s.typeClassName?.includes('Async') || s.state === 'RUNNING_ASYNC'),
+      retryEnabled: true,
+      maxAttempts: 3,
+      delayMillis: 1000,
+      overridden: false,
+      circuitBreakerEnabled: Boolean(s.circuitBreaker || s.circuitBreakerState),
+      circuitBreakerName: `${name}-cb`,
+      circuitBreakerState: s.circuitBreaker || s.circuitBreakerState || 'CLOSED',
+      circuitBreakerWaitOpenMillis: 5000,
+      circuitBreakerPermittedHalfOpenCalls: 2
+    };
+  };
 
   const seen = new Set();
   const nodes = [];
   const edges = [];
 
   const addNode = (name) => {
-    if (seen.has(name)) return;
+    if (!name || seen.has(name)) return;
     seen.add(name);
     nodes.push({
       id: name,
       type: 'stepNode',
-      data: { step: stepOrFallback(name), stepConfig: stepConfigs[name] || null },
+      data: {
+        step: stepOrFallback(name),
+        stepConfig: getEffectiveConfig(name),
+      },
       position: { x: 0, y: 0 },
     });
   };
 
-  if (routes.length === 0) {
-    const ordered = (steps || []).filter((step) => step.stepName !== 'INIT');
-    ordered.forEach((step) => addNode(step.stepName));
-    ordered.forEach((step, index) => {
-      if (index > 0) edges.push(makeEdge(ordered[index - 1].stepName, step.stepName, 'sequential'));
+  // 1. If explicit routes are defined
+  if (routes.length > 0) {
+    addNode(routes[0]?.triggerStep || 'INIT');
+    routes.forEach((route, index) => {
+      addNode(route.triggerStep);
+      const branches = route.branches || [];
+      branches.forEach((branch) => {
+        addNode(branch);
+        edges.push(makeEdge(route.triggerStep, branch, route.mode, `${index}`, route.triggerStatus));
+      });
+      if (route.joinStep) {
+        addNode(route.joinStep);
+        branches.forEach((branch) => edges.push(makeEdge(branch, route.joinStep, 'join', `${index}-join`)));
+      }
     });
     return { nodes, edges };
   }
 
-  addNode('INIT');
-  routes.forEach((route, index) => {
-    addNode(route.triggerStep);
-    const branches = route.branches || [];
-    branches.forEach((branch) => {
-      addNode(branch);
-      edges.push(makeEdge(route.triggerStep, branch, route.mode, `${index}`, route.triggerStatus));
+  // 2. If steps define dependencies (DAG structure)
+  const stepsWithDeps = defSteps.filter((s) => s.dependencies && s.dependencies.length > 0);
+  if (stepsWithDeps.length > 0) {
+    defSteps.forEach((s) => addNode(s.name || s.stepName));
+    defSteps.forEach((s, idx) => {
+      const stepName = s.name || s.stepName;
+      if (s.dependencies && s.dependencies.length > 0) {
+        s.dependencies.forEach((dep, depIdx) => {
+          addNode(dep);
+          edges.push(makeEdge(dep, stepName, 'sequential', `dep-${idx}-${depIdx}`));
+        });
+      }
     });
-    if (route.joinStep) {
-      addNode(route.joinStep);
-      branches.forEach((branch) => edges.push(makeEdge(branch, route.joinStep, 'join', `${index}-join`)));
+    return { nodes, edges };
+  }
+
+  // 3. Sequential fallback from recorded steps or definition steps
+  const sourceSteps = stepList.length > 0 ? stepList : defSteps;
+  const ordered = sourceSteps
+    .map((s) => s.stepName || s.name)
+    .filter((name) => name && name !== 'INIT');
+
+  ordered.forEach((name) => addNode(name));
+  ordered.forEach((name, index) => {
+    if (index > 0) {
+      edges.push(makeEdge(ordered[index - 1], name, 'sequential', `seq-${index}`));
     }
   });
 

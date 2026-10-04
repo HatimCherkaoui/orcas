@@ -1,40 +1,33 @@
 package com.github.orcas.demo;
 
-import com.github.orcas.demo.domain.Customer;
-import com.github.orcas.demo.domain.Inventory;
-import com.github.orcas.demo.domain.Order;
-import com.github.orcas.demo.domain.OrderStatus;
-import com.github.orcas.demo.domain.Payment;
-import com.github.orcas.demo.domain.PaymentStatus;
+import com.github.orcas.demo.domain.*;
 import com.github.orcas.demo.repository.CustomerRepository;
 import com.github.orcas.demo.repository.InventoryRepository;
 import com.github.orcas.demo.repository.OrderRepository;
 import com.github.orcas.demo.repository.PaymentRepository;
 import com.github.orcas.orchestrator.core.builder.StepCatalog;
+import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
 import io.restassured.RestAssured;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
 import org.springframework.aop.support.AopUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.kafka.core.KafkaTemplate;
-import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.AdminClientConfig;
-
-import java.util.Map;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -51,6 +44,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
@@ -336,7 +330,7 @@ class OrderWorkflowIntegrationTest {
         assertThat(payments.findByOrderId(order.getId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
         awaitWireMockRequest("/payments/pay-it-success/refund");
-        assertThat(wireMockCountAsInt("/payments/pay-it-success/refund")).isEqualTo(1);
+        assertThat(wireMockCountAsInt("/payments/pay-it-success/refund")).isEqualTo(3);
     }
 
     private Customer customer() {
@@ -410,24 +404,9 @@ class OrderWorkflowIntegrationTest {
         String notification_success = Files.readString(Path.of("../wiremock/mappings/notification-success.json"));
         String payment = Files.readString(Path.of("../wiremock/mappings/payment.json"));
 
-        String refundSuccess = """
-                {
-                  "request": {
-                    "method": "POST",
-                    "urlPathPattern": "/payments/.*/refund"
-                  },
-                  "response": {
-                    "status": 200,
-                    "jsonBody": {
-                      "paymentId": "pay-it-success",
-                      "status": "REFUNDED"
-                    },
-                    "headers": {
-                      "Content-Type": "application/json"
-                    }
-                  }
-                }
-                """;
+        String refund = Files.readString(Path.of("../wiremock/mappings/refund.json"));
+        String refund2 = Files.readString(Path.of("../wiremock/mappings/refund-2.json"));
+        String refund3 = Files.readString(Path.of("../wiremock/mappings/refund-3.json"));
 
         String otlpTraces = """
                 {"request":{"method":"POST","urlPath":"/v1/traces"},"response":{"status":200}}
@@ -440,7 +419,9 @@ class OrderWorkflowIntegrationTest {
                 notification_failed,
                 notification_success,
                 payment,
-                refundSuccess,
+                refund,
+                refund2,
+                refund3,
                 otlpTraces,
                 otlpLogs}) {
             client.send(HttpRequest.newBuilder(URI.create(wiremockUrl() + "/__admin/mappings"))
