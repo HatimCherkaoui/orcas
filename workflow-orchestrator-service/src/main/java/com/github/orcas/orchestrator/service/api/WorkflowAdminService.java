@@ -27,6 +27,9 @@ public interface WorkflowAdminService {
     /** Replaces the stored workflow metadata JSON for a workflow instance. */
     void replaceMetadata(String workflowId, Map<String, String> metadata);
 
+    /** Abandons a workflow instance, marking it and its active steps as terminated. */
+    void abandonWorkflow(String workflowId, String reason);
+
     /** Re-executes a previously failed or suspended step from its last known input. */
     void replayStep(String workflowId, String stepName);
 

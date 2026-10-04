@@ -3,8 +3,8 @@ package com.github.orcas.orchestrator.service.jdbc;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
-import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.OffsetDateTime;
 
 /** Writes operator actions to the audit tables owned by the workflow schema. */
 final class JdbcWorkflowAuditLogWriter {
@@ -27,19 +27,19 @@ final class JdbcWorkflowAuditLogWriter {
         this.jdbc = jdbc;
     }
 
-    void workflow(String workflowId, String action, String snapshot, Timestamp created) {
+    void workflow(String workflowId, String action, String snapshot, OffsetDateTime created) {
         write(WORKFLOW_LOG, workflowId, null, action, snapshot, created);
     }
 
-    void step(String workflowId, String stepName, String action, String snapshot, Timestamp created) {
+    void step(String workflowId, String stepName, String action, String snapshot, OffsetDateTime created) {
         write(STEP_LOG, workflowId, stepName, action, snapshot, created);
     }
 
-    void context(String workflowId, String action, String snapshot, Timestamp created) {
+    void context(String workflowId, String action, String snapshot, OffsetDateTime created) {
         write(CONTEXT_LOG, workflowId, null, action, snapshot, created);
     }
 
-    void metadata(String workflowId, String action, String snapshot, Timestamp created) {
+    void metadata(String workflowId, String action, String snapshot, OffsetDateTime created) {
         write(METADATA_LOG, workflowId, null, action, snapshot, created);
     }
 
@@ -49,7 +49,7 @@ final class JdbcWorkflowAuditLogWriter {
             String stepName,
             String action,
             String snapshot,
-            Timestamp created) {
+            OffsetDateTime created) {
         jdbc.update(sql, new MapSqlParameterSource()
                 .addValue("id", workflowId, Types.VARCHAR)
                 .addValue("stepName", stepName, Types.VARCHAR)

@@ -61,7 +61,7 @@ public final class StatusCriteria {
                 && expectedStatus != event.status()
                 && switch (event.status()) {
                     case INIT, STARTED, RUNNING, RUNNING_ASYNC -> true;
-                    case SUCCESS, FAILED, SUSPENDED, SKIPPED -> false;
+                    case SUCCESS, FAILED, SUSPENDED, ABANDONED, SKIPPED -> false;
                 };
     }
 

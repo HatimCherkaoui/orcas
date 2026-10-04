@@ -322,6 +322,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .field select.field-select-empty { color:transparent; }
 .field select.field-select-empty option { color:var(--text); background:var(--surface-1); }
 
+/* Helper text for form fields (e.g., date format hint) */
+.field-with-helper { position:relative; min-width:0; display:block; padding-bottom:18px; }
+.field-helper {
+  position:absolute; left:10px; bottom:-16px;
+  color:var(--text-dim); font-size:10px; font-weight:400;
+  line-height:1.2; pointer-events:none; opacity:0;
+  transition:opacity .12s ease; white-space:nowrap;
+}
+.field-with-helper:focus-within .field-helper { opacity:1; }
+
 /* Date field — fixed label above, no overlap */
 .field-date { position:relative; min-width:0; display:flex; flex-direction:column; gap:4px; height:auto; }
 .field-date-label { font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); padding:0 2px; }

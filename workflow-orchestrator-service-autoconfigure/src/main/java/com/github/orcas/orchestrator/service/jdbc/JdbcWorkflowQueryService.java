@@ -185,6 +185,18 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
         return logs("workflow_metadata_log", id, null);
     }
 
+    @Override
+    public List<ReplayView> replays(String id) {
+        return jdbc.query("""
+                        select id, pipeline_id, step_name, snapshot_json, date_created
+                          from workflow_step_log
+                         where pipeline_id=:id and action='REPLAY_REQUESTED'
+                         order by date_created desc, id desc
+                        """,
+                new MapSqlParameterSource().addValue("id", id),
+                JdbcWorkflowViewMapper.replay());
+    }
+
     private List<EntityLogView> logs(String table, String id, String stepName) {
         String sql = switch (table) {
             case "workflow_log" -> WORKFLOW_LOG_SQL;

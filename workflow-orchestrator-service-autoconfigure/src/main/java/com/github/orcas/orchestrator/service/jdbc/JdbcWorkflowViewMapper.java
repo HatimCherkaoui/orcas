@@ -54,6 +54,15 @@ final class JdbcWorkflowViewMapper {
                 instant(rs, "date_created"));
     }
 
+    static RowMapper<WorkflowQueryService.ReplayView> replay() {
+        return (rs, row) -> new WorkflowQueryService.ReplayView(
+                rs.getLong("id"),
+                rs.getString("pipeline_id"),
+                rs.getString("step_name"),
+                rs.getString("snapshot_json"),
+                instant(rs, "date_created"));
+    }
+
     static Instant instant(ResultSet rs, String column) {
         try {
             Timestamp value = rs.getTimestamp(column);

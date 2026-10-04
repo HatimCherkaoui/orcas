@@ -49,18 +49,21 @@ export function SelectField({ label, value, onChange, options, placeholder = 'An
   );
 }
 
-export function DateField({ label, value, onChange, placeholder = 'Pick a date' }) {
+export function DateField({ label, value, onChange, placeholder = 'Pick a date', helperText = 'Format: YYYY-MM-DD' }) {
   const [focused, setFocused] = useState(false);
   return (
-    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      />
-    </Field>
+    <div className="field-with-helper">
+      <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
+      </Field>
+      {helperText && <div className="field-helper">{helperText}</div>}
+    </div>
   );
 }
 

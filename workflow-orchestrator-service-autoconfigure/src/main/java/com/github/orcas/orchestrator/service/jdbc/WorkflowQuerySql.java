@@ -4,6 +4,8 @@ import com.github.orcas.orchestrator.service.api.WorkflowQueryService.WorkflowQu
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 
 import java.sql.Types;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 /** Builds the common SQL predicates shared by service read and admin queries. */
 final class WorkflowQuerySql {
@@ -36,11 +38,15 @@ final class WorkflowQuerySql {
         }
         if (query.createdFrom() != null) {
             sql.append(" and ").append(workflowAlias).append(".date_created >= :createdFrom");
-            parameters.addValue("createdFrom", query.createdFrom());
+            parameters.addValue("createdFrom",
+                    OffsetDateTime.ofInstant(query.createdFrom(), ZoneOffset.UTC),
+                    Types.TIMESTAMP_WITH_TIMEZONE);
         }
         if (query.createdTo() != null) {
             sql.append(" and ").append(workflowAlias).append(".date_created <= :createdTo");
-            parameters.addValue("createdTo", query.createdTo());
+            parameters.addValue("createdTo",
+                    OffsetDateTime.ofInstant(query.createdTo(), ZoneOffset.UTC),
+                    Types.TIMESTAMP_WITH_TIMEZONE);
         }
     }
 

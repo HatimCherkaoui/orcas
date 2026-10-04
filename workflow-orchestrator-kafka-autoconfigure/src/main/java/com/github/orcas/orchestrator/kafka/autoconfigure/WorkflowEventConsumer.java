@@ -30,7 +30,13 @@ public final class WorkflowEventConsumer {
             groupId = "${workflow.orchestrator.kafka.consumer-group}",
             containerFactory = "workflowKafkaListenerContainerFactory")
     public void onMessage(String message) throws Exception {
-        StatusEvent event = mapper.readValue(message, StatusEvent.class);
+        StatusEvent event;
+        try {
+            event = mapper.readValue(message, StatusEvent.class);
+        } catch (Exception e) {
+            log.warning("Ignoring malformed workflow event payload: " + e.getMessage());
+            return;
+        }
         log.fine("Consumed status event workflowId='" + event.workflowId() + "' step='" + event.step() + "' status=" + event.status());
         engine.getObject().handle(event);
     }

@@ -9,5 +9,6 @@ public enum Status {
     SUCCESS,
     FAILED,
     SUSPENDED,
+    ABANDONED,
     SKIPPED
 }

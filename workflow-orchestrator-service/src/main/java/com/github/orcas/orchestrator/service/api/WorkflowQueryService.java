@@ -47,6 +47,9 @@ public interface WorkflowQueryService {
     /** Lists the audit log entries recorded for metadata updates on the workflow instance. */
     List<EntityLogView> metadataLogs(String workflowId);
 
+    /** Lists replay requests recorded for the workflow instance, newest first. */
+    List<ReplayView> replays(String workflowId);
+
     /** Search criteria and pagination parameters accepted by {@link #search(WorkflowQuery)}. */
     record WorkflowQuery(
             String workflowId,
@@ -100,6 +103,10 @@ public interface WorkflowQueryService {
         public MetadataView {
             values = values == null ? Map.of() : Map.copyOf(values);
         }
+    }
+
+    /** A single replay request recorded for a workflow step. */
+    record ReplayView(long id, String workflowId, String stepName, String snapshotJson, Instant dateCreated) {
     }
 
     /** A single audit log entry describing an action taken on a workflow instance or step. */
