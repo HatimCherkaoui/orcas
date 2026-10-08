@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Small fluent DSL for sequential, asynchronous and parallel workflow routing. */
+/**
+ * Small fluent DSL for sequential, asynchronous and parallel workflow routing.
+ */
 public final class PipelineBuilder {
     private final String workflowName;
     private final StepCatalog stepCatalog;
@@ -49,7 +51,9 @@ public final class PipelineBuilder {
         return new WorkflowDefinition(workflowName, routes);
     }
 
-    /** Configures the route triggered by the workflow INIT event. */
+    /**
+     * Configures the route triggered by the workflow INIT event.
+     */
     public final class Initialize {
         public Initialize on(StatusCriteria criteria) {
             currentCriteria = Objects.requireNonNull(criteria, "criteria");
@@ -69,7 +73,9 @@ public final class PipelineBuilder {
         }
     }
 
-    /** Configures a route that runs its step after a status criterion matches. */
+    /**
+     * Configures a route that runs its step after a status criterion matches.
+     */
     public final class Sequential {
         public Sequential when(StatusCriteria criteria) {
             currentCriteria = Objects.requireNonNull(criteria, "criteria");
@@ -89,7 +95,9 @@ public final class PipelineBuilder {
         }
     }
 
-    /** Configures parallel branch steps followed by one join step. */
+    /**
+     * Configures parallel branch steps followed by one join step.
+     */
     public final class Parallel {
         private StatusCriteria criteria;
         private final List<WorkflowStep> branches = new ArrayList<>();
@@ -139,7 +147,9 @@ public final class PipelineBuilder {
         }
     }
 
-    /** Configures steps that are submitted to the workflow asynchronous executor. */
+    /**
+     * Configures steps that are submitted to the workflow asynchronous executor.
+     */
     public final class Async {
         private StatusCriteria criteria;
         private final List<WorkflowStep> events = new ArrayList<>();
