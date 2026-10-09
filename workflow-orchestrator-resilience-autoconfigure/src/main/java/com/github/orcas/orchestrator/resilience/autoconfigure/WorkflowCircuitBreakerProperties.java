@@ -81,6 +81,18 @@ public class WorkflowCircuitBreakerProperties {
         return instances;
     }
 
+    public Duration waitDurationFor(String name) {
+        Instance instance = instances.get(name);
+        return instance == null || instance.getWaitDurationInOpenState() == null
+                ? waitDurationInOpenState : instance.getWaitDurationInOpenState();
+    }
+
+    public int permittedCallsFor(String name) {
+        Instance instance = instances.get(name);
+        return instance == null || instance.getPermittedNumberOfCallsInHalfOpenState() == null
+                ? permittedNumberOfCallsInHalfOpenState : instance.getPermittedNumberOfCallsInHalfOpenState();
+    }
+
     /** Per-breaker override of the workflow-wide circuit breaker defaults. */
     public static class Instance {
         private Integer slidingWindowSize;

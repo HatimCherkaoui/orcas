@@ -13,7 +13,13 @@ public record StatusEvent(
         Status status,
         Map<String, String> metadata,
         String message,
-        Instant timestamp) {
+        Instant timestamp,
+        StepFailureDetails failure) {
+
+    public StatusEvent(String workflowId, String workflow, String step, Status status,
+                       Map<String, String> metadata, String message, Instant timestamp) {
+        this(workflowId, workflow, step, status, metadata, message, timestamp, null);
+    }
 
     public StatusEvent {
         workflowId = requireText(workflowId, "workflowId");
@@ -32,6 +38,17 @@ public record StatusEvent(
             Map<String, String> metadata,
             String message) {
         return new StatusEvent(workflowId, workflow, step, status, metadata, message, Instant.now());
+    }
+
+    public static StatusEvent failure(
+            String workflowId,
+            String workflow,
+            String step,
+            Status status,
+            Map<String, String> metadata,
+            com.github.orcas.orchestrator.core.error.WorkflowError error) {
+        return new StatusEvent(workflowId, workflow, step, status, metadata, error.reason(), Instant.now(),
+                StepFailureDetails.from(error));
     }
 
     public static String newPipelineId() {

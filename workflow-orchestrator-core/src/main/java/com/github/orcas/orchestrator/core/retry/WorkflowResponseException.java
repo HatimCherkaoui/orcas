@@ -10,7 +10,7 @@ public final class WorkflowResponseException extends RuntimeException {
     private final transient WorkflowError error;
 
     public WorkflowResponseException(String step, int statusCode, WorkflowError error) {
-        super("Workflow step '" + step + "' received response status " + statusCode);
+        super(error == null ? "Workflow step '" + step + "' received HTTP " + statusCode : error.reason());
         this.statusCode = statusCode;
         this.error = error;
     }

@@ -71,7 +71,8 @@ class RestClientWorkflowStepTest {
 
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(WorkflowResponseException.class)
-                .hasMessageContaining("status 503");
+                .hasMessageContaining("HTTP 503")
+                .hasMessageContaining("unavailable");
     }
 
     private RestClientWorkflowStep stepFor(String methodName, Client client) throws Exception {

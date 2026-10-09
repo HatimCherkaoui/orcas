@@ -1,0 +1,16 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-rate-limit-recovery",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "RATE_LIMITED",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "matches": "429(\\.0+)?"}}]
+  },
+  "response": {
+    "status": 429,
+    "jsonBody": {"errorCode": "RATE_LIMITED", "errorMessage": "Payment provider rate limit exceeded"},
+    "headers": {"Content-Type": "application/json", "Retry-After": "1"}
+  }
+}

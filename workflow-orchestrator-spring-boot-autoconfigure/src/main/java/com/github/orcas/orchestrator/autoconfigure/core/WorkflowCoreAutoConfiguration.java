@@ -6,6 +6,7 @@ import com.github.orcas.orchestrator.core.builder.WorkflowDefinitionProvider;
 import com.github.orcas.orchestrator.core.engine.InMemoryWorkflowStateStore;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.engine.WorkflowObserver;
+import com.github.orcas.orchestrator.core.engine.WorkflowRetryCoordinator;
 import com.github.orcas.orchestrator.core.engine.WorkflowRegistry;
 import com.github.orcas.orchestrator.core.engine.WorkflowStateStore;
 import com.github.orcas.orchestrator.core.error.DefaultWorkflowErrorCategorizer;
@@ -103,7 +104,28 @@ public final class WorkflowCoreAutoConfiguration {
             WorkflowStateStore stateStore,
             WorkflowErrorCategorizer categorizer,
             WorkflowObserver observer,
+            ObjectProvider<WorkflowRetryCoordinator> retryCoordinator,
             @org.springframework.beans.factory.annotation.Qualifier("workflowTaskExecutor") Executor executor) {
-        return new WorkflowEngine(registry, publisher, stateStore, executor, categorizer, observer);
+        return new WorkflowEngine(registry, publisher, stateStore, executor, categorizer, observer,
+                new WorkflowRetryCoordinator() {
+                    @Override
+                    public boolean automaticRetriesEnabled() {
+                        WorkflowRetryCoordinator coordinator = retryCoordinator.getIfAvailable();
+                        return coordinator != null && coordinator.automaticRetriesEnabled();
+                    }
+
+                    @Override
+                    public boolean retryAllowed(String workflowId, String stepName) {
+                        WorkflowRetryCoordinator coordinator = retryCoordinator.getIfAvailable();
+                        return coordinator != null && coordinator.retryAllowed(workflowId, stepName);
+                    }
+
+                    @Override
+                    public void scheduleRetry(String workflowId, String stepName,
+                                              com.github.orcas.orchestrator.core.error.WorkflowError error) {
+                        WorkflowRetryCoordinator coordinator = retryCoordinator.getIfAvailable();
+                        if (coordinator != null) coordinator.scheduleRetry(workflowId, stepName, error);
+                    }
+                });
     }
 }

@@ -1,0 +1,16 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-rate-limit-recovery",
+  "requiredScenarioState": "RATE_LIMITED",
+  "newScenarioState": "UNAVAILABLE",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "matches": "429(\\.0+)?"}}]
+  },
+  "response": {
+    "status": 503,
+    "jsonBody": {"errorCode": "PROVIDER_UNAVAILABLE", "errorMessage": "Provider is in maintenance"},
+    "headers": {"Content-Type": "application/json", "Retry-After": "0"}
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-rate-limit-recovery",
+  "requiredScenarioState": "UNAVAILABLE",
+  "newScenarioState": "GATEWAY_TIMEOUT",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "matches": "429(\\.0+)?"}}]
+  },
+  "response": {
+    "status": 504,
+    "jsonBody": {"errorCode": "PROVIDER_TIMEOUT", "errorMessage": "Upstream payment provider timed out"},
+    "headers": {"Content-Type": "application/json", "Retry-After": "0"}
+  }
+}

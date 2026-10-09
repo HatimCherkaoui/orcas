@@ -1,0 +1,13 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "matches": "400(\\.0+)?"}}]
+  },
+  "response": {
+    "status": 400,
+    "jsonBody": {"errorCode": "INVALID_PAYMENT", "errorMessage": "Payment request failed business validation"},
+    "headers": {"Content-Type": "application/json"}
+  }
+}

@@ -587,6 +587,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 /* Alert card */
 .alert-card { border-left:2px solid var(--warning); background:rgba(245,158,11,.04); }
 .alert-card .config-card-header { background:rgba(245,158,11,.06); }
+.failure-diagnostic { border:1px solid var(--line); border-left:3px solid var(--danger); border-radius:8px; padding:12px 14px; margin-bottom:16px; background:var(--danger-soft); }
+.failure-diagnostic.is-suspended { border-left-color:var(--warning); background:rgba(245,158,11,.06); }
+.failure-diagnostic-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--danger); }
+.failure-diagnostic.is-suspended .failure-diagnostic-heading { color:var(--warning); }
+.failure-code { border-radius:5px; padding:3px 6px; background:rgba(15,23,42,.08); color:var(--text); font:600 11px/1.3 var(--font-mono, monospace); white-space:nowrap; }
+.failure-diagnostic p { margin:8px 0; color:var(--text); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.failure-diagnostic-meta { display:flex; flex-wrap:wrap; align-items:center; gap:7px; color:var(--text-dim); font-size:10px; }
+.failure-diagnostic-meta code { overflow-wrap:anywhere; }
 .warning-icon { color:var(--warning); }
 
 /* Config notice */

@@ -65,13 +65,19 @@ public final class InMemoryWorkflowStateStore implements WorkflowStateStore, Wor
 
     @Override
     public List<String> suspendedWorkflowIds(String stepName) {
-        return steps.values().stream()
-                .filter(step -> step.stepName().equals(stepName))
-                .map(StepContext::workflowId)
-                .filter(id -> events.getOrDefault(id, List.of()).stream()
-                        .anyMatch(event -> event.step().equals(stepName) && event.status() == Status.SUSPENDED))
-                .distinct()
+        return events.entrySet().stream()
+                .filter(entry -> entry.getValue().stream()
+                        .filter(event -> event.step().equals(stepName))
+                        .reduce((first, second) -> second)
+                        .map(event -> event.status() == Status.SUSPENDED)
+                        .orElse(false))
+                .map(java.util.Map.Entry::getKey)
                 .toList();
+    }
+
+    @Override
+    public int retryCount(String workflowId, String stepName) {
+        return retries.getOrDefault(key(workflowId, stepName), 0);
     }
 
     @Override

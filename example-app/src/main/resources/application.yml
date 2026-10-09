@@ -77,6 +77,11 @@ workflow:
       pending-acquire-timeout: 5s
     circuit-breaker:
       enabled: true
+      sliding-window-size: ${DEMO_CIRCUIT_BREAKER_WINDOW_SIZE:20}
+      minimum-number-of-calls: ${DEMO_CIRCUIT_BREAKER_MINIMUM_CALLS:10}
+      failure-rate-threshold: ${DEMO_CIRCUIT_BREAKER_FAILURE_RATE:50}
+      permitted-number-of-calls-in-half-open-state: ${DEMO_CIRCUIT_BREAKER_HALF_OPEN_PROBES:2}
+      wait-duration-in-open-state: ${DEMO_CIRCUIT_BREAKER_COOLDOWN:30s}
 
 server:
   port: 8080

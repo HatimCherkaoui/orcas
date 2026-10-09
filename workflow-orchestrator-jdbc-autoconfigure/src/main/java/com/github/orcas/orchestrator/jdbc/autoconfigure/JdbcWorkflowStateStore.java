@@ -132,11 +132,19 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
                 jdbc.update("""
                                 insert into workflow_step
                                     (pipeline_id, workflow, step_name, step_type_class_name,
-                                     state, date_started, date_ended, date_updated)
-                                values (:id, :workflow, :step, :type, :state, :started, :ended, :updated)
+                                     state, failure_category, failure_code, failure_type, failure_message,
+                                     failure_disposition, date_started, date_ended, date_updated)
+                                values (:id, :workflow, :step, :type, :state, :failureCategory, :failureCode,
+                                        :failureType, :failureMessage, :failureDisposition,
+                                        :started, :ended, :updated)
                                 on conflict (pipeline_id, step_name) do update set
                                     step_type_class_name=coalesce(excluded.step_type_class_name, workflow_step.step_type_class_name),
                                     state=excluded.state,
+                                    failure_category=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_category else null end,
+                                    failure_code=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_code else null end,
+                                    failure_type=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_type else null end,
+                                    failure_message=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_message else null end,
+                                    failure_disposition=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_disposition else null end,
                                     date_started=coalesce(workflow_step.date_started, excluded.date_started),
                                     date_ended=case when excluded.state in ('SUCCESS','FAILED','SKIPPED')
                                                     then excluded.date_ended else workflow_step.date_ended end,
@@ -148,19 +156,21 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
                                 .addValue("step", event.step(), Types.VARCHAR)
                                 .addValue("type", stepTypeClassName, Types.VARCHAR)
                                 .addValue("state", event.status().name(), Types.VARCHAR)
+                                .addValue("failureCategory", event.failure() == null ? null : event.failure().category(), Types.VARCHAR)
+                                .addValue("failureCode", event.failure() == null ? null : event.failure().code(), Types.VARCHAR)
+                                .addValue("failureType", event.failure() == null ? null : event.failure().exceptionType(), Types.VARCHAR)
+                                .addValue("failureMessage", event.failure() == null ? null : event.failure().message(), Types.LONGVARCHAR)
+                                .addValue("failureDisposition", event.failure() == null ? null : event.failure().disposition(), Types.VARCHAR)
                                 .addValue("started", now, Types.TIMESTAMP_WITH_TIMEZONE)
                                 .addValue("ended", terminal(event.status()) ? now : null, Types.TIMESTAMP_WITH_TIMEZONE)
                                 .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
 
-                auditLog.step(
-                        event.workflowId(),
-                        event.step(),
-                        event.status().name(),
-                        Map.of(
-                                "step", event.step(),
-                                "status", event.status().name(),
-                                "message", event.message() == null ? "" : event.message()),
-                        now);
+                Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+                snapshot.put("step", event.step());
+                snapshot.put("status", event.status().name());
+                snapshot.put("message", event.message() == null ? "" : event.message());
+                if (event.failure() != null) snapshot.put("failure", event.failure());
+                auditLog.step(event.workflowId(), event.step(), event.status().name(), snapshot, now);
             }
 
             // A step can succeed while downstream steps still need to run. The
@@ -244,6 +254,14 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
                     Map.of("attempt", attempt, "reason", reason == null ? "" : reason),
                     now);
         });
+    }
+
+    @Override
+    public int retryCount(String workflowId, String stepName) {
+        return jdbc.query("""
+                select retry_count from workflow_step where pipeline_id=:id and step_name=:step
+                """, new MapSqlParameterSource().addValue("id", workflowId, Types.VARCHAR)
+                .addValue("step", stepName, Types.VARCHAR), rs -> rs.next() ? rs.getInt(1) : 0);
     }
 
 

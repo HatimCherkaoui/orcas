@@ -1,6 +1,8 @@
 package com.github.orcas.orchestrator.resilience.autoconfigure;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.engine.WorkflowRetryStateStore;
+import com.github.orcas.orchestrator.core.engine.WorkflowRetryCoordinator;
+import com.github.orcas.orchestrator.core.error.WorkflowError;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.slf4j.Logger;
@@ -18,12 +20,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Schedules delayed replays for suspended workflow steps and drives half-open probe
  * batches when a circuit breaker is ready to test recovery.
  */
-public final class WorkflowRetryScheduler implements DisposableBean {
+public final class WorkflowRetryScheduler implements WorkflowRetryCoordinator, DisposableBean {
     private static final Logger log = LoggerFactory.getLogger(WorkflowRetryScheduler.class);
+    // Kafka acknowledgement means the event was accepted by the broker, not that
+    // the JDBC consumer has persisted the suspended step yet. Leave a short
+    // durability window before replaying so the replay cannot overtake its state.
+    private static final long MINIMUM_REPLAY_DELAY_MILLIS = 100;
     public record ScheduledHalfOpenReplay(String breakerName, String stepName, Instant scheduledAt,
                                           Duration delay, int permittedCalls, String reason) {
     }
@@ -31,19 +38,73 @@ public final class WorkflowRetryScheduler implements DisposableBean {
     private final WorkflowEngine engine;
     private final WorkflowRetryStateStore stateStore;
     private final CircuitBreakerRegistry registry;
+    private final WorkflowRetryProperties retryProperties;
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private final ConcurrentMap<String, ScheduledFuture<?>> pendingHalfOpenBatches = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScheduledHalfOpenReplay> scheduledHalfOpenReplays = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ScheduledFuture<?>> pendingRetries = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicInteger> localRetryCounts = new ConcurrentHashMap<>();
     public WorkflowRetryScheduler(WorkflowEngine engine) {
-        this(engine, null, null);
+        this(engine, null, null, new WorkflowRetryProperties());
     }
     public WorkflowRetryScheduler(WorkflowEngine engine, WorkflowRetryStateStore stateStore) {
-        this(engine, stateStore, null);
+        this(engine, stateStore, null, new WorkflowRetryProperties());
     }
     public WorkflowRetryScheduler(WorkflowEngine engine, WorkflowRetryStateStore stateStore, CircuitBreakerRegistry registry) {
+        this(engine, stateStore, registry, new WorkflowRetryProperties());
+    }
+    public WorkflowRetryScheduler(WorkflowEngine engine, WorkflowRetryStateStore stateStore,
+                                  CircuitBreakerRegistry registry, WorkflowRetryProperties retryProperties) {
         this.engine = engine;
         this.stateStore = stateStore;
         this.registry = registry;
+        this.retryProperties = retryProperties;
+    }
+
+    @Override
+    public boolean automaticRetriesEnabled() {
+        return retryProperties.isEnabled();
+    }
+
+    @Override
+    public boolean retryAllowed(String workflowId, String stepName) {
+        if (!retryProperties.isEnabled()) return false;
+        int attempts = retryCount(workflowId, stepName);
+        var stepPolicy = retryProperties.forStep(stepName);
+        int maxAttempts = stepPolicy == null || stepPolicy.getMaxAttempts() == null
+                ? retryProperties.getMaxAttempts() : stepPolicy.getMaxAttempts();
+        return attempts < maxAttempts;
+    }
+
+    @Override
+    public void scheduleRetry(String workflowId, String stepName, WorkflowError error) {
+        if (!retryProperties.isEnabled()) return;
+        var stepPolicy = retryProperties.forStep(stepName);
+        Duration delay = error.retryAfter() != null ? error.retryAfter()
+                : stepPolicy == null || stepPolicy.getDelay() == null
+                ? retryProperties.getDelay() : stepPolicy.getDelay();
+        String key = workflowId + ":" + stepName;
+        pendingRetries.computeIfAbsent(key, ignored -> {
+            int attempt = retryCount(workflowId, stepName) + 1;
+            int maxAttempts = stepPolicy == null || stepPolicy.getMaxAttempts() == null
+                    ? retryProperties.getMaxAttempts() : stepPolicy.getMaxAttempts();
+            log.info("Scheduling automatic replay of step '{}' for workflow instance {} (attempt {}/{}) in {}",
+                    stepName, workflowId, attempt, maxAttempts, delay);
+            return executor.schedule(() -> {
+                try {
+                    recordRetryAttempt(workflowId, stepName, attempt, error.reason());
+                    // Clear the old reservation before executing. A replay can
+                    // fail synchronously and schedule its next attempt before
+                    // engine.replay returns; retaining this key would silently
+                    // drop that next attempt in computeIfAbsent.
+                    pendingRetries.remove(key);
+                    engine.replay(workflowId, stepName);
+                } catch (RuntimeException e) {
+                    pendingRetries.remove(key);
+                    log.error("Scheduled replay of step '{}' for workflow instance {} failed", stepName, workflowId, e);
+                }
+            }, Math.max(MINIMUM_REPLAY_DELAY_MILLIS, delay.toMillis()), TimeUnit.MILLISECONDS);
+        });
     }
     /** Schedules {@code stepName} of {@code workflowId} to be replayed after {@code delay}. */
     public void schedule(String workflowId, String stepName, Duration delay) {
@@ -95,6 +156,13 @@ public final class WorkflowRetryScheduler implements DisposableBean {
         List<String> suspended = stateStore.suspendedWorkflowIds(stepName);
         if (suspended.isEmpty()) {
             log.debug("No suspended workflow instances found for step '{}'", stepName);
+            if (breaker.getState() == CircuitBreaker.State.OPEN
+                    || breaker.getState() == CircuitBreaker.State.HALF_OPEN) {
+                // Kafka may not have persisted the SUSPENDED event yet when the
+                // cooldown timer fires. Keep looking briefly rather than losing
+                // the only recovery probe for this breaker.
+                scheduleHalfOpenReplay(breakerName, stepName, Duration.ofMillis(100), batchSize);
+            }
             return;
         }
         Set<String> selected = new HashSet<>(suspended.stream().limit(batchSize).toList());
@@ -140,11 +208,29 @@ public final class WorkflowRetryScheduler implements DisposableBean {
         }
     }
     private void recordRetryAttempt(String workflowId, String stepName, String reason) {
+        recordRetryAttempt(workflowId, stepName, retryCount(workflowId, stepName) + 1, reason);
+    }
+
+    private int retryCount(String workflowId, String stepName) {
+        String key = workflowId + ":" + stepName;
+        if (stateStore == null) return localRetryCounts.computeIfAbsent(key, ignored -> new AtomicInteger()).get();
+        try {
+            return stateStore.retryCount(workflowId, stepName);
+        } catch (RuntimeException e) {
+            log.warn("Unable to read retry count for step '{}' of workflow instance {}: {}",
+                    stepName, workflowId, e.getMessage());
+            return 0;
+        }
+    }
+
+    private void recordRetryAttempt(String workflowId, String stepName, int attempt, String reason) {
         if (stateStore == null) {
+            localRetryCounts.computeIfAbsent(workflowId + ":" + stepName, ignored -> new AtomicInteger())
+                    .incrementAndGet();
             return;
         }
         try {
-            stateStore.recordRetry(workflowId, stepName, 0, reason);
+            stateStore.recordRetry(workflowId, stepName, attempt, reason);
         } catch (RuntimeException e) {
             log.warn("Unable to record retry for step '{}' of workflow instance {}: {}", stepName, workflowId, e.getMessage());
         }

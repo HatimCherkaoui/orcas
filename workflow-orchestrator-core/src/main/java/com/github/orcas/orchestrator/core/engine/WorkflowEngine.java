@@ -58,6 +58,18 @@ public final class WorkflowEngine {
             Executor asyncExecutor,
             WorkflowErrorCategorizer categorizer,
             WorkflowObserver observer) {
+        this(registry, publisher, store, asyncExecutor, categorizer, observer, null);
+    }
+
+    /** Creates an engine with explicit error and automatic retry policies. */
+    public WorkflowEngine(
+            WorkflowRegistry registry,
+            WorkflowEventPublisher publisher,
+            WorkflowStateStore store,
+            Executor asyncExecutor,
+            WorkflowErrorCategorizer categorizer,
+            WorkflowObserver observer,
+            WorkflowRetryCoordinator retryCoordinator) {
         this.registry = Objects.requireNonNull(registry, "registry");
         this.publisher = Objects.requireNonNull(publisher, "publisher");
         this.store = Objects.requireNonNull(store, "store");
@@ -70,7 +82,8 @@ public final class WorkflowEngine {
                 publisher,
                 asyncExecutor,
                 errorCategorizer,
-                observer);
+                observer,
+                retryCoordinator);
     }
 
     /** Starts a new workflow instance and publishes its initial event. */

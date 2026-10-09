@@ -1,0 +1,15 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-rate-limit-recovery",
+  "requiredScenarioState": "GATEWAY_TIMEOUT",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "matches": "429(\\.0+)?"}}]
+  },
+  "response": {
+    "status": 202,
+    "jsonBody": {"paymentId": "pay-recovered-rate-limit", "status": "PENDING"},
+    "headers": {"Content-Type": "application/json"}
+  }
+}

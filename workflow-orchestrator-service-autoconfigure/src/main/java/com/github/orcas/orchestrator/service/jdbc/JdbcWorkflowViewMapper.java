@@ -41,7 +41,12 @@ final class JdbcWorkflowViewMapper {
                 rs.getInt("retry_count"),
                 instant(rs, "date_started"),
                 instant(rs, "date_ended"),
-                instant(rs, "date_updated"));
+                instant(rs, "date_updated"),
+                rs.getString("failure_disposition"),
+                rs.getString("failure_category"),
+                rs.getString("failure_code"),
+                rs.getString("failure_type"),
+                rs.getString("failure_message"));
     }
 
     static RowMapper<WorkflowQueryService.EntityLogView> log() {

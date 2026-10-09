@@ -89,7 +89,15 @@ public interface WorkflowQueryService {
     /** A single recorded step execution and its lifecycle timestamps. */
     record WorkflowStepView(String workflowId, String workflow, String stepName,
                             String typeClassName, String state, int retryCount, Instant dateStarted,
-                            Instant dateEnded, Instant dateUpdated) {
+                            Instant dateEnded, Instant dateUpdated, String failureDisposition,
+                            String failureCategory, String failureCode, String failureType,
+                            String failureMessage) {
+        public WorkflowStepView(String workflowId, String workflow, String stepName,
+                                String typeClassName, String state, int retryCount, Instant dateStarted,
+                                Instant dateEnded, Instant dateUpdated) {
+            this(workflowId, workflow, stepName, typeClassName, state, retryCount,
+                    dateStarted, dateEnded, dateUpdated, null, null, null, null, null);
+        }
     }
 
     /** The business context captured for a workflow instance. */

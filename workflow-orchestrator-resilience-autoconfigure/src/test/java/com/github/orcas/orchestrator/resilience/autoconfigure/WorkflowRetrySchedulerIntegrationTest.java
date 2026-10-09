@@ -27,7 +27,7 @@ class WorkflowRetrySchedulerIntegrationTest {
     try {
       scheduler.schedule("wf-1", "review", Duration.ZERO);
 
-      verify(stateStore, timeout(500)).recordRetry("wf-1", "review", 0, "circuit breaker fallback replay scheduled");
+      verify(stateStore, timeout(500)).recordRetry("wf-1", "review", 1, "circuit breaker fallback replay scheduled");
       verify(engine, timeout(500)).replay("wf-1", "review");
     } finally {
       scheduler.destroy();
@@ -73,9 +73,9 @@ class WorkflowRetrySchedulerIntegrationTest {
     try {
       scheduler.scheduleHalfOpenReplay("orders-breaker", "review", Duration.ZERO, 1);
 
-      verify(stateStore, timeout(1_000)).recordRetry("wf-a", "review", 0, "circuit breaker half-open probe");
-      verify(stateStore, timeout(1_000)).recordRetry("wf-b", "review", 0, "circuit breaker closed replay");
-      verify(stateStore, timeout(1_000)).recordRetry("wf-c", "review", 0, "circuit breaker closed replay");
+      verify(stateStore, timeout(1_000)).recordRetry("wf-a", "review", 1, "circuit breaker half-open probe");
+      verify(stateStore, timeout(1_000)).recordRetry("wf-b", "review", 1, "circuit breaker closed replay");
+      verify(stateStore, timeout(1_000)).recordRetry("wf-c", "review", 1, "circuit breaker closed replay");
       verify(engine, timeout(1_000)).replay("wf-a", "review");
       verify(engine, timeout(1_000)).replay("wf-b", "review");
       verify(engine, timeout(1_000)).replay("wf-c", "review");
@@ -105,6 +105,5 @@ class WorkflowRetrySchedulerIntegrationTest {
     }
   }
 }
-
 
 

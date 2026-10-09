@@ -1,0 +1,13 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "equalTo": "503.99"}}]
+  },
+  "response": {
+    "status": 503,
+    "jsonBody": {"errorCode": "PROVIDER_UNAVAILABLE", "errorMessage": "Payment provider remains unavailable"},
+    "headers": {"Content-Type": "application/json", "Retry-After": "0"}
+  }
+}

@@ -8,13 +8,14 @@
     "urlPathPattern": "/payments/.*/refund"
   },
   "response": {
-    "status": 500,
+    "status": 502,
     "jsonBody": {
-      "errorCode": "REFUND-ERROR-2",
-      "errorMessage": "Refund failed due to network issues"
+      "errorCode": "REFUND-BAD-GATEWAY-2",
+      "errorMessage": "Refund gateway is still returning invalid upstream responses"
     },
     "headers": {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "Retry-After": "0"
     }
   }
 }
