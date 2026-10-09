@@ -61,9 +61,9 @@ Use the BOM to keep versions aligned:
 <dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>com.github.orcas</groupId>
+            <groupId>io.github.hatimcherkaoui</groupId>
             <artifactId>workflow-orchestrator-bom</artifactId>
-            <version>0.6.0</version>
+            <version>0.6.0-SNAPSHOT</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -75,15 +75,15 @@ A typical JDBC + REST application can use either the individual starters or the 
 
 ```xml
 <dependency>
-    <groupId>com.github.orcas</groupId>
+    <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-spring-boot-autoconfigure</artifactId>
 </dependency>
 <dependency>
-    <groupId>com.github.orcas</groupId>
+    <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-jdbc-starter</artifactId>
 </dependency>
 <dependency>
-    <groupId>com.github.orcas</groupId>
+    <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-rest-starter</artifactId>
 </dependency>
 ```
@@ -151,99 +151,59 @@ requests against Kafka and PostgreSQL, with intentionally smaller pool and worke
 local Docker/Colima. It reports launch and workflow rates; these local numbers are a baseline,
 not an EC2/RDS capacity guarantee.
 
-## Build
+## Build and validate
 
-Java 25 and Maven 3.9.6+ are required.
-
-```bash
-mvn clean verify
-mvn -pl example-app -am verify
-cd workflow-orchestrator-dashboard && npm ci && npm run build
-```
-
-See `DESIGN.md` for the dependency rules and `PUBLISHING.md` for Maven Central release steps.
-
-## Run the order example
-
-From the repository root:
+Use JDK 25 or 26, Maven 3.9.6+, Node.js 20+ and Docker (including Colima).
 
 ```bash
-# Requires JDK 25 or JDK 26, Maven 3.9.6+, and Docker.
-mvn -version
-
-# Start PostgreSQL, Kafka and WireMock for the local example.
-docker compose -f example-app/docker-compose.yml up -d
-
-# Build the example and every library module it depends on.
-mvn -pl example-app -am clean package -DskipTests
-
-# Run the packaged Spring Boot application.
-JAVA_TOOL_OPTIONS="--enable-native-access=ALL-UNNAMED" \
-  java -jar example-app/target/app.jar
+./verify.sh
 ```
 
-The example uses the defaults from `example-app/src/main/resources/application.yml`:
-PostgreSQL on `localhost:5432`, Kafka on `localhost:9092`, and WireMock on
-`localhost:8089`. The Compose file above starts those three services.
+The default `poc` Maven profile includes the example runtime and management application,
+so `mvn clean verify` also exercises the real Kafka/PostgreSQL/WireMock integration tests.
+For Colima, see [Testcontainers setup](example-app/TESTCONTAINERS.md).
 
-In another terminal, exercise the example workflow:
+## First POC
 
-```bash
-./example-app/demo.sh
-```
-
-For the complete Docker development stack, including PostgreSQL, Kafka, WireMock, the
-Spring Boot example backend, the Kafka dashboard backend, React dashboard, Elasticsearch
-and OpenTelemetry Collector, use the repository Compose profile:
-
-```bash
-docker compose --profile DEV up --build
-```
-
-The example backend declares only `workflow-orchestrator-spring-boot-starter`. That single
-starter brings the standard ORCAS integrations; Spring Boot auto-configuration registers
-the workflow operational API at `/api/orchestrator/workflows` and the Kafka dashboard API
-at `/api/orchestrator/kafka/*`. The React dashboard is then served on `http://localhost:5173`
-and proxies `/api/*` to the `example-app` container.
-
-The example application uses `workflow-orchestrator-spring-boot-starter`, so the standard ORCAS integrations are available without declaring each starter separately. Individual feature starters remain available for applications that want a smaller footprint.
-
-## Runtime and management services
-
-The repository now separates the workflow runtime from the dashboard management plane:
-
-- `example-app` is a workflow runtime. It uses `workflow-orchestrator-spring-boot-starter` and owns workflow definitions, step beans and execution.
-- `workflow-orchestrator-management-service` is a standalone Spring Boot application. It owns the persisted-state REST API and Kafka introspection API used by the dashboard.
-- The dashboard proxies `/api/*` only to `workflow-management-service:8081`; it never calls `example-app`.
-- Manual replay is sent from the management service to Kafka on `workflow.replay` and consumed by the runtime, so the management service does not need application workflow classes.
-
-The canonical local stack can be started with:
-
-```bash
-docker compose up --build
-```
-
-The dashboard is available on `http://localhost:5173`, the management API on `http://localhost:8081`, and the example runtime on `http://localhost:8080`.
-
-## Docker Compose profiles
-
-The canonical Compose file uses explicit profiles:
-
-- `dev`: PostgreSQL, Kafka, the standalone management service, the example Spring Boot application, and the dashboard.
-- `prod`: the same application stack plus WireMock and the full observability stack (OpenTelemetry Collector, Elasticsearch, Kibana, and their initialization services).
-
-Start development:
-
-```bash
-docker compose --profile dev up -d --build
-```
-
-Start the complete production-style stack:
+Start the complete demonstration stack with:
 
 ```bash
 docker compose --profile prod up -d --build
+./example-app/demo.sh
 ```
 
-The dashboard is served on `http://localhost:5173`. Browser requests stay same-origin (`/api/orchestrator/...`) and Nginx forwards them to the management service at `http://workflow-management-service:8081` inside the Compose network. The management service is exposed on the host as `http://localhost:8081`.
+Dashboard: http://localhost:5173. Management API: http://localhost:8081.
+Example runtime: http://localhost:8080. These are local demonstration services;
+WireMock simulates external providers and the Compose passwords are development defaults.
 
-The example application remains independent from the management API. It only consumes the workflow runtime starters and publishes/executes workflows.
+The runtime owns workflow execution. The management service queries persisted state and
+sends manual replay commands through Kafka. The dashboard uses the management API.
+See the [POC guide](docs/poc.md) for error scenarios and distributable packaging.
+
+## Repository layout
+
+- `workflow-orchestrator-*`: Maven library modules with `src/main/java`, `src/main/resources` and `src/test/java`.
+- `example-app`: order workflow demonstration and Testcontainers scenarios.
+- `workflow-orchestrator-management-service`: standalone dashboard backend application.
+- `workflow-orchestrator-dashboard`: React dashboard, built separately with npm.
+- `docs`: architecture, module selection and POC instructions.
+- `scripts`: module boundary checks and POC packaging.
+- `wiremock`: attempt-based external provider simulations.
+
+The default build includes all applications. The `release-metadata` profile builds only
+the parent, BOM and library modules for Maven publication. Applications are excluded from
+that reactor and also have deployment disabled.
+
+Maven coordinates use `io.github.hatimcherkaoui`; Java imports continue to use
+`com.github.orcas`. The current `0.6.0-SNAPSHOT` is a development POC, not a published
+Maven Central release. Install it locally with `mvn install` before using the BOM example.
+
+## Documentation and support
+
+- [Architecture](docs/architecture.md) and [module selection](docs/module-selection.md)
+- [Publishing](PUBLISHING.md) and [contributing](CONTRIBUTING.md)
+- [Changes](CHANGELOG.md)
+- [GitHub issues](https://github.com/HatimCherkaoui/orcas/issues)
+- Maintainer: [Hatim Cherkaoui](https://github.com/HatimCherkaoui)
+
+Licensed under [Apache 2.0](LICENSE).

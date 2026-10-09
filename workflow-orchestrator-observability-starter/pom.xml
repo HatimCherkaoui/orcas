@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.github.orcas</groupId>
+        <groupId>io.github.hatimcherkaoui</groupId>
         <artifactId>workflow-orchestrator</artifactId>
         <version>0.6.0-SNAPSHOT</version>
     </parent>
@@ -11,7 +11,7 @@
     <description>Convenience dependency for workflow logging and MDC context.</description>
     <dependencies>
         <dependency>
-            <groupId>com.github.orcas</groupId>
+            <groupId>io.github.hatimcherkaoui</groupId>
             <artifactId>workflow-orchestrator-observability-autoconfigure</artifactId>
         </dependency>
         <dependency>
@@ -45,4 +45,30 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+    <profiles>
+        <profile>
+            <id>starter-documentation</id>
+            <activation><property><name>release</name></property></activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-jar-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-starter-javadocs</id>
+                                <phase>package</phase>
+                                <goals><goal>jar</goal></goals>
+                                <configuration>
+                                    <classifier>javadoc</classifier>
+                                    <classesDirectory>${project.basedir}</classesDirectory>
+                                    <includes><include>README.md</include></includes>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

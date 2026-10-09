@@ -32,7 +32,7 @@ core
 
 Integration modules may depend on core. Core must not depend on Spring, Reactor, Resilience4j, SLF4J, JPA or a transport.
 
-The boundary is enforced by `scripts/check-module-boundaries.py` and `core/src/test/.../ArchitectureTest.java`.
+The boundary is enforced by `scripts/check-module-boundaries.py` and `workflow-orchestrator-core/src/test/.../ArchitectureTest.java`.
 
 ## Spring IoC
 
@@ -43,3 +43,11 @@ Default components are created only when an application has not supplied its own
 ## Choosing dependencies
 
 Use the BOM and then choose only the starters needed by an application. Use the umbrella Spring starter for the convenience path when all integrations are wanted.
+
+## Distribution
+
+Library modules use one parent and BOM with coordinates under `io.github.hatimcherkaoui`.
+All Java packages retain `com.github.orcas`. The default `poc` profile adds runnable
+applications to the reactor. The `release-metadata` profile builds only libraries and
+attaches source/Javadoc JARs and signatures for Maven Central. The React dashboard is
+a separate npm application.

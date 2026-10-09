@@ -1,0 +1,40 @@
+name: Verify and package POC
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: workflow-orchestrator-dashboard/package-lock.json
+      - name: Verify all Maven modules and Testcontainers scenarios
+        run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Check module boundaries
+        run: |
+          python3 scripts/check-module-boundaries.py
+          python3 scripts/verify-unified-starter.py
+      - name: Build dashboard
+        working-directory: workflow-orchestrator-dashboard
+        run: npm ci && npm run build
+      - name: Validate library publication artifacts without signing or uploading
+        run: mvn --batch-mode --no-transfer-progress -Drelease -Dgpg.skip=true -DskipTests package
+      - name: Package first POC
+        run: python3 scripts/package-poc.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orcas-poc
+          path: |
+            target/orcas-*-poc.zip
+            target/orcas-*-poc.zip.sha256

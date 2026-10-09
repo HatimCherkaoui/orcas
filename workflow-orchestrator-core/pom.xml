@@ -2,7 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.github.orcas</groupId>
+        <groupId>io.github.hatimcherkaoui</groupId>
         <artifactId>workflow-orchestrator</artifactId>
         <version>0.6.0-SNAPSHOT</version>
     </parent>

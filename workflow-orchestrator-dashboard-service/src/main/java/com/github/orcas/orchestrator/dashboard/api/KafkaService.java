@@ -8,7 +8,7 @@ import java.util.Optional;
  * Read-only view over the Kafka cluster used by the orchestrator, exposed by the
  * dashboard's Kafka page so operators can inspect the {@code workflow.status} topic
  * and consumer group lag without a separate Kafka UI. See {@code DefaultKafkaService}
- * for the {@link org.apache.kafka.clients.admin.AdminClient}-backed implementation.
+ * for the {@code org.apache.kafka.clients.admin.AdminClient}-backed implementation.
  */
 public interface KafkaService {
     /** Lists the names of all topics visible to the configured admin client, sorted alphabetically. */

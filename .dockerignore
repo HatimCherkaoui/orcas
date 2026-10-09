@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+.github/agents
+**/AGENTS.md
+.idea
+.vscode
+**/target
+**/node_modules
+**/dist
+**/.DS_Store
+**/.env
+**/.env.*

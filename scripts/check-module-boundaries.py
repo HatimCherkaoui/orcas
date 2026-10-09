@@ -15,7 +15,7 @@ EXPECTED = {
     "workflow-orchestrator-resilience": {"workflow-orchestrator-core"},
     "workflow-orchestrator-resilience-autoconfigure": {"workflow-orchestrator-core", "workflow-orchestrator-resilience"},
     "workflow-orchestrator-jdbc-autoconfigure": {"workflow-orchestrator-core"},
-    "workflow-orchestrator-kafka-autoconfigure": {"workflow-orchestrator-core", "workflow-orchestrator-service"},
+    "workflow-orchestrator-kafka-autoconfigure": {"workflow-orchestrator-core", "workflow-orchestrator-service", "workflow-orchestrator-spring-boot-autoconfigure"},
     "workflow-orchestrator-observability-autoconfigure": {"workflow-orchestrator-core"},
     "workflow-orchestrator-service": {"workflow-orchestrator-core"},
     "workflow-orchestrator-service-autoconfigure": {"workflow-orchestrator-core", "workflow-orchestrator-jdbc-autoconfigure", "workflow-orchestrator-service"},

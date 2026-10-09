@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.6.0
+## 0.6.0-SNAPSHOT — first POC
 
-This release reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
+This development POC reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
 
 ### Architecture
 
@@ -43,3 +43,12 @@ Applications using Spring Boot should depend on the feature starter that matches
 - Applied the same bean-ordering fix to the Kafka dashboard service auto-configuration.
 - Added a management-service HTTP integration test using RestAssured for `GET /api/orchestrator/workflows`.
 - Corrected the management-service test property to `workflow.orchestrator.jdbc.schema-initialization`.
+
+### POC packaging and recovery
+
+- Maven coordinates now use the maintainer namespace `io.github.hatimcherkaoui`.
+- Library artifacts include license/notice metadata, sources and Javadocs in the release profile.
+- Runnable applications are separated into the default POC profile and excluded from publication.
+- Semantic HTTP/network/database failures support terminal failure, automatic retry and breaker suspension.
+- Retry sequencing and half-open permits are verified by WireMock/Testcontainers scenarios.
+- Obsolete phase reports and local agent instructions are removed from the public repository.

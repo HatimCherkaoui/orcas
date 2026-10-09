@@ -8,7 +8,7 @@ Use:
 
 ```xml
 <dependency>
-    <groupId>com.github.orcas</groupId>
+    <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-spring-boot-autoconfigure</artifactId>
 </dependency>
 ```
@@ -21,7 +21,7 @@ Add:
 
 ```xml
 <dependency>
-    <groupId>com.github.orcas</groupId>
+    <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-jdbc-starter</artifactId>
 </dependency>
 ```

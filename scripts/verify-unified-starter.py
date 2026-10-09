@@ -42,7 +42,7 @@ for artifact in ("workflow-orchestrator-core", "workflow-orchestrator-rest", "wo
 
 service_source = (ROOT / "workflow-orchestrator-service-autoconfigure/src/main/java/com/github/orcas/orchestrator/service/WorkflowServiceAutoConfiguration.java").read_text()
 assert "WorkflowCoreAutoConfiguration.class" not in service_source
-assert "WorkflowJdbcAutoConfiguration.class" in service_source
+assert "org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration" in service_source
 assert "org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration" in service_source
 assert "WorkflowServiceController workflowServiceController" in service_source
 

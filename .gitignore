@@ -1,4 +1,3 @@
-**/.github/
 **/node_modules/
 **/dist/
 **/build/
@@ -21,3 +20,9 @@
 **/.env.*
 **/.eslintcache
 **/.prettiercache
+
+# Local agent instructions and editor automation are not part of the public project.
+.agents/
+.codex/
+.github/agents/
+**/AGENTS.md
