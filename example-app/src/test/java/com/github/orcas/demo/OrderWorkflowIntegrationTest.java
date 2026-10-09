@@ -91,6 +91,16 @@ class OrderWorkflowIntegrationTest {
         registry.add("spring.datasource.hikari.connection-timeout", () -> "5000");
         registry.add("workflow.orchestrator.async.concurrency", () -> "4");
         registry.add("workflow.orchestrator.kafka.concurrency", () -> "2");
+        registry.add("workflow.orchestrator.retry.delay", () -> "100ms");
+        registry.add("workflow.orchestrator.retry.steps.initiate-payment.delay", () -> "100ms");
+        registry.add("workflow.orchestrator.retry.steps.initiate-payment.max-attempts", () -> "3");
+        registry.add("workflow.orchestrator.retry.steps.refund-payment.delay", () -> "100ms");
+        registry.add("workflow.orchestrator.retry.steps.refund-payment.max-attempts", () -> "5");
+        registry.add("workflow.orchestrator.circuit-breaker.sliding-window-size", () -> "2");
+        registry.add("workflow.orchestrator.circuit-breaker.minimum-number-of-calls", () -> "2");
+        registry.add("workflow.orchestrator.circuit-breaker.failure-rate-threshold", () -> "50");
+        registry.add("workflow.orchestrator.circuit-breaker.permitted-number-of-calls-in-half-open-state", () -> "1");
+        registry.add("workflow.orchestrator.circuit-breaker.wait-duration-in-open-state", () -> "500ms");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         registry.add("spring.kafka.consumer.auto-offset-reset", () -> "earliest");
@@ -147,6 +157,9 @@ class OrderWorkflowIntegrationTest {
     @Autowired
     WorkflowEventPublisher workflowEventPublisher;
 
+    @Autowired
+    io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry circuitBreakers;
+
     @BeforeAll
     static void beforeAll() throws IOException, InterruptedException {
         configureWireMock();
@@ -154,6 +167,8 @@ class OrderWorkflowIntegrationTest {
 
     @BeforeEach
     void resetState() {
+        resetWireMock();
+        circuitBreakers.getAllCircuitBreakers().forEach(io.github.resilience4j.circuitbreaker.CircuitBreaker::reset);
         payments.deleteAll();
         orders.deleteAll();
         inventory.deleteAll();
@@ -316,6 +331,114 @@ class OrderWorkflowIntegrationTest {
     }
 
     @Test
+    void retriesGatewayErrorsByAttemptAndPersistsPaymentOnlyAfterSuccess() {
+        Customer customer = customer();
+        stock("RETRY-502", 1);
+        java.time.OffsetDateTime started = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+
+        postApp("/orders", orderBody(customer, "RETRY-502", "42.01")).statusCode(202);
+
+        awaitWorkflow(started, "SUCCESS");
+        await(() -> payments.count() == 1);
+        assertThat(wireMockCountAsInt("/payments")).isEqualTo(2);
+        await(() -> jdbcTemplate.queryForObject("""
+                select retry_count from workflow_step ws join workflow w using (pipeline_id)
+                 where w.workflow='order-pipeline' and w.date_created >= ? and ws.step_name='initiate-payment'
+                """, Integer.class, started) == 1);
+    }
+
+    @Test
+    void terminalHttp500FailsWithoutCreatingPaymentOrRetrying() {
+        Customer customer = customer();
+        stock("TERMINAL-500", 1);
+        stock("TERMINAL-400", 1);
+        java.time.OffsetDateTime started = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+
+        postApp("/orders", orderBody(customer, "TERMINAL-500", "500.00")).statusCode(202);
+        postApp("/orders", orderBody(customer, "TERMINAL-400", "400.00")).statusCode(202);
+
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow where workflow='order-pipeline'
+                  and date_created >= ? and status='FAILED'
+                """, Integer.class, started) == 2);
+        assertThat(payments.count()).isZero();
+        assertThat(wireMockCountAsInt("/payments")).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForList("""
+                select state from workflow_step where step_name='initiate-payment'
+                  and pipeline_id in (select pipeline_id from workflow where workflow='order-pipeline' and date_created >= ?)
+                """, String.class, started)).containsOnly("FAILED");
+        assertThat(jdbcTemplate.queryForList("""
+                select failure_code from workflow_step where step_name='initiate-payment'
+                  and pipeline_id in (select pipeline_id from workflow where date_created >= ?)
+                """, String.class, started)).containsExactlyInAnyOrder("HTTP 400", "HTTP 500");
+        assertThat(jdbcTemplate.queryForList("""
+                select failure_category from workflow_step where step_name='initiate-payment'
+                  and pipeline_id in (select pipeline_id from workflow where date_created >= ?)
+                """, String.class, started)).contains("HTTP_CLIENT_ERROR", "HTTP_INTERNAL_SERVER_ERROR");
+    }
+
+    @Test
+    void retriesConnectionResetAndRateLimitResponsesUntilUpstreamRecovers() {
+        Customer customer = customer();
+        stock("RESET-RETRY", 1);
+        stock("RATE-RETRY", 1);
+        stock("EXHAUSTED-RETRY", 1);
+        java.time.OffsetDateTime started = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+
+        postApp("/orders", orderBody(customer, "RESET-RETRY", "7.07")).statusCode(202);
+        postApp("/orders", orderBody(customer, "RATE-RETRY", "429.00")).statusCode(202);
+        postApp("/orders", orderBody(customer, "EXHAUSTED-RETRY", "503.99")).statusCode(202);
+
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow where workflow='order-pipeline'
+                  and date_created >= ? and status='SUCCESS'
+                """, Integer.class, started) == 2
+                && jdbcTemplate.queryForObject("""
+                select count(*) from workflow where workflow='order-pipeline'
+                  and date_created >= ? and status='FAILED'
+                """, Integer.class, started) == 1,
+                () -> "workflowStates=" + jdbcTemplate.queryForList("""
+                        select w.status, ws.step_name, ws.state, ws.retry_count, ws.failure_code, ws.failure_message
+                          from workflow w join workflow_step ws using (pipeline_id)
+                         where w.workflow='order-pipeline' and w.date_created >= ? order by w.date_created
+                        """, started) + ", paymentRequests=" + wireMockCountAsInt("/payments"));
+
+        assertThat(payments.count()).isEqualTo(2);
+        assertThat(wireMockCountAsInt("/payments")).isEqualTo(10);
+        assertThat(jdbcTemplate.queryForObject("""
+                select retry_count from workflow_step ws join workflow w using (pipeline_id)
+                 where w.workflow='order-pipeline' and w.date_created >= ? and ws.step_name='initiate-payment'
+                   and w.status='FAILED'
+                """, Integer.class, started)).isEqualTo(3);
+    }
+
+    @Test
+    void circuitBreakerSuspendsDuringCooldownThenRunsHalfOpenRecoveryProbe() {
+        Customer customer = customer();
+        Order order = orders.save(new Order(customer, OrderStatus.CONFIRMED, new java.math.BigDecimal("25.00")));
+        Payment payment = payments.save(new Payment(order, order.getTotalAmount(), PaymentStatus.CONFIRMED, "cb-refund-" + order.getId()));
+
+        postApp("/payments/callback/refund", """
+                {"orderId":%d,"paymentId":"%s"}
+                """.formatted(order.getId(), payment.getProviderPaymentId())).statusCode(202);
+
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow_step ws join workflow w using (pipeline_id)
+                 where w.workflow='payment-refund' and ws.step_name='refund-payment' and ws.state='SUSPENDED'
+                """, Integer.class) > 0);
+        await(() -> orders.findById(order.getId())
+                .filter(value -> value.getStatus() == OrderStatus.REFUNDED).isPresent());
+
+        assertThat(wireMockCountAsInt("/payments/" + payment.getProviderPaymentId() + "/refund")).isEqualTo(3);
+        assertThat(circuitBreakers.circuitBreaker("refund-payment").getState())
+                .isEqualTo(io.github.resilience4j.circuitbreaker.CircuitBreaker.State.CLOSED);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from workflow_step_log
+                 where step_name='refund-payment' and snapshot_json like '%circuit breaker half-open probe%'
+                """, Integer.class)).isGreaterThan(0);
+    }
+
+    @Test
     void shouldReleaseInventoryAndNotifyWhenPaymentFails() {
         Customer customer = customer();
         stock("ORCA-MUG", 5);
@@ -431,7 +554,12 @@ class OrderWorkflowIntegrationTest {
                         + ", payment=" + payments.findByOrderId(order.getId()).map(Payment::getStatus)
                         + ", refundRequests=" + wireMockCountAsInt("/payments/pay-it-success/refund")
                         + ", workflows=" + jdbcTemplate.queryForList(
-                                "select workflow, status from workflow order by date_created desc limit 5"));
+                                "select workflow, status from workflow order by date_created desc limit 5")
+                        + ", stepErrors=" + jdbcTemplate.queryForList("""
+                                select ws.step_name, ws.state, ws.failure_category, ws.failure_code, ws.failure_message
+                                  from workflow_step ws join workflow w using (pipeline_id)
+                                 where w.workflow='payment-refund' order by w.date_created desc limit 3
+                                """));
         assertThat(payments.findByOrderId(order.getId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
         awaitWireMockRequest("/payments/pay-it-success/refund");
@@ -452,6 +580,23 @@ class OrderWorkflowIntegrationTest {
         return """
                 {"customerId":%d,"items":[{"sku":"%s","quantity":1,"unitPrice":12345.01}]}
                 """.formatted(customer.getId(), sku);
+    }
+
+    private String orderBody(Customer customer, String sku, String unitPrice) {
+        return """
+                {"customerId":%d,"items":[{"sku":"%s","quantity":1,"unitPrice":%s}]}
+                """.formatted(customer.getId(), sku, unitPrice);
+    }
+
+    private String awaitWorkflow(java.time.OffsetDateTime createdAfter, String status) {
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow where workflow='order-pipeline'
+                  and date_created >= ? and status=?
+                """, Integer.class, createdAfter, status) > 0);
+        return jdbcTemplate.queryForObject("""
+                select pipeline_id from workflow where workflow='order-pipeline'
+                  and date_created >= ? and status=? order by date_created desc limit 1
+                """, String.class, createdAfter, status);
     }
 
     private String awaitFailedWorkflow(java.time.OffsetDateTime createdAfter) {
@@ -535,6 +680,16 @@ class OrderWorkflowIntegrationTest {
         String refund = Files.readString(Path.of("../wiremock/mappings/refund.json"));
         String refund2 = Files.readString(Path.of("../wiremock/mappings/refund-2.json"));
         String refund3 = Files.readString(Path.of("../wiremock/mappings/refund-3.json"));
+        String payment502 = Files.readString(Path.of("../wiremock/mappings/payment-502-recovery.json"));
+        String payment500 = Files.readString(Path.of("../wiremock/mappings/payment-500-terminal.json"));
+        String payment503Exhausted = Files.readString(Path.of("../wiremock/mappings/payment-503-exhausted.json"));
+        String payment400 = Files.readString(Path.of("../wiremock/mappings/payment-400-terminal.json"));
+        String paymentReset = Files.readString(Path.of("../wiremock/mappings/payment-connection-reset.json"));
+        String paymentResetRecovered = Files.readString(Path.of("../wiremock/mappings/payment-connection-reset-recovered.json"));
+        String payment429 = Files.readString(Path.of("../wiremock/mappings/payment-rate-limit-recovery.json"));
+        String payment503 = Files.readString(Path.of("../wiremock/mappings/payment-rate-limit-503.json"));
+        String payment504 = Files.readString(Path.of("../wiremock/mappings/payment-rate-limit-504.json"));
+        String paymentRateRecovered = Files.readString(Path.of("../wiremock/mappings/payment-rate-limit-recovered.json"));
 
         String otlpTraces = """
                 {"request":{"method":"POST","urlPath":"/v1/traces"},"response":{"status":200}}
@@ -547,6 +702,16 @@ class OrderWorkflowIntegrationTest {
                 notification_failed,
                 notification_success,
                 paymentPerf,
+                payment502,
+                payment500,
+                payment503Exhausted,
+                payment400,
+                paymentReset,
+                paymentResetRecovered,
+                payment429,
+                payment503,
+                payment504,
+                paymentRateRecovered,
                 payment,
                 refund,
                 refund2,
@@ -557,6 +722,28 @@ class OrderWorkflowIntegrationTest {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapping))
                     .build(), HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
+    private static void resetWireMock() {
+        HttpClient client = HttpClient.newHttpClient();
+        resetWireMockEndpoint(client, "/__admin/scenarios/reset", true);
+        resetWireMockEndpoint(client, "/__admin/requests", false);
+    }
+
+    private static void resetWireMockEndpoint(HttpClient client, String endpoint, boolean post) {
+        try {
+            var request = HttpRequest.newBuilder(URI.create(wiremockUrl() + endpoint));
+            if (post) request.POST(HttpRequest.BodyPublishers.noBody()); else request.DELETE();
+            HttpResponse<Void> response = client.send(request.build(), HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() >= 300) {
+                throw new IllegalStateException("WireMock reset failed for " + endpoint + ": " + response.statusCode());
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to reset WireMock endpoint " + endpoint, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted resetting WireMock", e);
         }
     }
 

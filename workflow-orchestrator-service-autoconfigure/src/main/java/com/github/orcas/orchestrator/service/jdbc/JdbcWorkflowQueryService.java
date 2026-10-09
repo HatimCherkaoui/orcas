@@ -94,7 +94,8 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
     public List<WorkflowStepView> steps(String id) {
         return jdbc.query("""
                         select pipeline_id, workflow, step_name, step_type_class_name, state, retry_count,
-                               date_started, date_ended, date_updated
+                               date_started, date_ended, date_updated, failure_disposition,
+                               failure_category, failure_code, failure_type, failure_message
                           from workflow_step where pipeline_id=:id order by date_started nulls last, step_name
                         """, new MapSqlParameterSource().addValue("id", id),
                 JdbcWorkflowViewMapper.step());
@@ -104,7 +105,8 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
     public WorkflowStepView step(String workflowId, String stepName) {
         return jdbc.queryForObject("""
                         select pipeline_id, workflow, step_name, step_type_class_name, state, retry_count,
-                               date_started, date_ended, date_updated
+                               date_started, date_ended, date_updated, failure_disposition,
+                               failure_category, failure_code, failure_type, failure_message
                           from workflow_step where pipeline_id=:id and step_name=:stepName
                         """, new MapSqlParameterSource().addValue("id",
                         workflowId).addValue("stepName", stepName),
@@ -230,4 +232,3 @@ public final class JdbcWorkflowQueryService implements WorkflowQueryService {
     }
 
 }
-

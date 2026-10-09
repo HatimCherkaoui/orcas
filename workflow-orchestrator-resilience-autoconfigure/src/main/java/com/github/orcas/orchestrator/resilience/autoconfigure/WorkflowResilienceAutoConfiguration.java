@@ -23,27 +23,32 @@ import org.springframework.context.annotation.Bean;
 public final class WorkflowResilienceAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    CircuitBreakerRegistry workflowCircuitBreakerRegistry(WorkflowCircuitBreakerProperties properties) {
-        var defaults = defaultConfig(properties);
+    CircuitBreakerRegistry workflowCircuitBreakerRegistry(WorkflowCircuitBreakerProperties properties,
+                                                          WorkflowErrorCategorizer categorizer) {
+        var defaults = defaultConfig(properties, categorizer);
         var registry = CircuitBreakerRegistry.of(defaults);
         properties.getInstances().forEach((name, instance) ->
-                registry.circuitBreaker(name, instanceConfig(properties, instance)));
+                registry.circuitBreaker(name, instanceConfig(properties, instance, categorizer)));
         return registry;
     }
 
-    private static CircuitBreakerConfig defaultConfig(WorkflowCircuitBreakerProperties properties) {
+    private static CircuitBreakerConfig defaultConfig(WorkflowCircuitBreakerProperties properties,
+                                                      WorkflowErrorCategorizer categorizer) {
         return CircuitBreakerConfig.custom()
                 .slidingWindowSize(properties.getSlidingWindowSize())
                 .minimumNumberOfCalls(properties.getMinimumNumberOfCalls())
                 .failureRateThreshold(properties.getFailureRateThreshold())
                 .permittedNumberOfCallsInHalfOpenState(properties.getPermittedNumberOfCallsInHalfOpenState())
                 .waitDurationInOpenState(properties.getWaitDurationInOpenState())
+                .automaticTransitionFromOpenToHalfOpenEnabled(true)
+                .recordException(error -> categorizer.classify(error).replayable())
                 .build();
     }
 
     private static CircuitBreakerConfig instanceConfig(WorkflowCircuitBreakerProperties properties,
-                                                       WorkflowCircuitBreakerProperties.Instance instance) {
-        var builder = CircuitBreakerConfig.from(defaultConfig(properties));
+                                                       WorkflowCircuitBreakerProperties.Instance instance,
+                                                       WorkflowErrorCategorizer categorizer) {
+        var builder = CircuitBreakerConfig.from(defaultConfig(properties, categorizer));
         if (instance.getSlidingWindowSize() != null) {
             builder.slidingWindowSize(instance.getSlidingWindowSize());
         }
@@ -75,9 +80,10 @@ public final class WorkflowResilienceAutoConfiguration {
             CircuitBreakerRegistry registry,
             WorkflowErrorCategorizer categorizer,
             ObjectProvider<WorkflowRetryScheduler> retryScheduler,
-            WorkflowRetryProperties retryProperties) {
+            WorkflowRetryProperties retryProperties,
+            WorkflowCircuitBreakerProperties circuitBreakerProperties) {
         return new WorkflowResilienceInvocationInterceptor(
-                registry, categorizer, retryScheduler, retryProperties);
+                registry, categorizer, retryScheduler, retryProperties, circuitBreakerProperties);
     }
 
     @Bean
@@ -93,7 +99,7 @@ public final class WorkflowResilienceAutoConfiguration {
     @ConditionalOnMissingBean
     WorkflowRetryScheduler workflowRetryScheduler(
             WorkflowEngine engine, ObjectProvider<WorkflowRetryStateStore> stateStore,
-            CircuitBreakerRegistry registry) {
-        return new WorkflowRetryScheduler(engine, stateStore.getIfAvailable(), registry);
+            CircuitBreakerRegistry registry, WorkflowRetryProperties properties) {
+        return new WorkflowRetryScheduler(engine, stateStore.getIfAvailable(), registry, properties);
     }
 }

@@ -94,6 +94,19 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
   const scheduledRetry = details.data?.scheduledRetry || step?.scheduledRetry || null;
   const circuitBreakerState = effectiveConfig.circuitBreakerState;
+  const failureDetails = details.data?.failureMessage ? details.data : (() => {
+    const entries = Array.isArray(logs.data) ? logs.data : logs.data?.content || logs.data?.items || [];
+    const latest = [...entries].reverse().find((entry) => ['FAILED', 'SUSPENDED'].includes(entry.action));
+    if (!latest?.snapshotJson) return null;
+    try {
+      const snapshot = JSON.parse(latest.snapshotJson);
+      return { failureMessage: snapshot.failure?.message || snapshot.message,
+        failureCode: snapshot.failure?.code, failureCategory: snapshot.failure?.category,
+        failureType: snapshot.failure?.exceptionType, failureDisposition: snapshot.failure?.disposition };
+    } catch {
+      return { failureMessage: latest.snapshotJson };
+    }
+  })();
 
   async function replay() {
     setReplaying(true);
@@ -132,6 +145,19 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
         {/* ─── Overview ─── */}
         {tab === 'overview' && (
           <div className="panel-overview">
+            {['FAILED', 'SUSPENDED'].includes(state) && failureDetails && (
+              <section className={`failure-diagnostic ${state === 'FAILED' ? 'is-failed' : 'is-suspended'}`} aria-live="polite">
+                <div className="failure-diagnostic-heading">
+                  <strong>{state === 'FAILED' ? 'Step failed' : 'Step suspended'}</strong>
+                  {failureDetails.failureCode && <span className="failure-code">{failureDetails.failureCode}</span>}
+                </div>
+                <p>{failureDetails.failureMessage || 'The step stopped without a diagnostic message.'}</p>
+                <div className="failure-diagnostic-meta">
+                  {failureDetails.failureCategory && <span>{failureDetails.failureCategory}</span>}
+                  {failureDetails.failureType && <code>{failureDetails.failureType}</code>}
+                </div>
+              </section>
+            )}
             <dl className="details">
               <dt>Type</dt>
               <dd className="mono detail-truncate">{step?.typeClassName || 'DefaultStep'}</dd>

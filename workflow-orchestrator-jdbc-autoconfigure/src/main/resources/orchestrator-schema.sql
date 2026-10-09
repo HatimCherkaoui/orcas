@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS workflow_step (
     step_type_class_name VARCHAR(1000),
     state VARCHAR(32) NOT NULL,
     retry_count INT NOT NULL DEFAULT 0,
+    failure_category VARCHAR(128),
+    failure_code VARCHAR(128),
+    failure_type VARCHAR(1000),
+    failure_message TEXT,
+    failure_disposition VARCHAR(32),
     date_started TIMESTAMP WITH TIME ZONE,
     date_ended TIMESTAMP WITH TIME ZONE,
     date_updated TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -25,6 +30,11 @@ CREATE TABLE IF NOT EXISTS workflow_step (
 -- Idempotent for databases created before retry tracking was added (CREATE TABLE
 -- IF NOT EXISTS above is a no-op once the table already exists).
 ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS failure_category VARCHAR(128);
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS failure_code VARCHAR(128);
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS failure_type VARCHAR(1000);
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS failure_message TEXT;
+ALTER TABLE workflow_step ADD COLUMN IF NOT EXISTS failure_disposition VARCHAR(32);
 CREATE INDEX IF NOT EXISTS idx_workflow_step_state ON workflow_step(state);
 CREATE INDEX IF NOT EXISTS idx_workflow_step_name_state ON workflow_step(step_name, state);
 CREATE INDEX IF NOT EXISTS idx_workflow_step_pipeline ON workflow_step(pipeline_id);
@@ -116,4 +126,3 @@ CREATE TABLE IF NOT EXISTS workflow_step_context_log (
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_step_context_log_step
     ON workflow_step_context_log(pipeline_id, step_name, date_created);
-

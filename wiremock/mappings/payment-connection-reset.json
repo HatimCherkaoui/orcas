@@ -1,0 +1,12 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-connection-reset",
+  "requiredScenarioState": "Started",
+  "newScenarioState": "RESET_ONCE",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "equalTo": "7.07"}}]
+  },
+  "response": {"fault": "CONNECTION_RESET_BY_PEER"}
+}

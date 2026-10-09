@@ -11,6 +11,10 @@ import org.springframework.http.ResponseEntity;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 
 /** Converts an HTTP response into workflow output and response metadata. */
 final class RestClientResponseHandler {
@@ -44,8 +48,8 @@ final class RestClientResponseHandler {
             StepExecutionContext execution,
             ResponseEntity<?> entity) {
         recordResponse(execution, entity);
-        responseConsumer.consume(execution, entity);
         failOnError(entity);
+        responseConsumer.consume(execution, entity);
         execution.output(entity.getBody());
         return StepResult.success(context);
     }
@@ -57,6 +61,7 @@ final class RestClientResponseHandler {
         var entities = responses.stream()
                 .map(item -> (ResponseEntity<?>) item)
                 .toList();
+        entities.forEach(this::failOnError);
         var bodies = entities.stream().map(ResponseEntity::getBody).toList();
         responseConsumer.consume(execution, responses);
         execution.output(bodies);
@@ -77,11 +82,36 @@ final class RestClientResponseHandler {
     private void failOnError(ResponseEntity<?> entity) {
         if (entity.getStatusCode().isError()) {
             int status = entity.getStatusCode().value();
+            String responseMessage = briefMessage(entity.getBody());
+            Duration retryAfter = retryAfter(entity.getHeaders().getFirst("Retry-After"));
             throw new WorkflowResponseException(
                     stepName,
                     status,
-                    categorizer.classifyResponse(status));
+                    categorizer.classifyResponse(status, responseMessage, retryAfter));
         }
+    }
+
+    private static Duration retryAfter(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            long seconds = Long.parseLong(value.trim());
+            return Duration.ofSeconds(Math.max(0, seconds));
+        } catch (NumberFormatException ignored) {
+            try {
+                Instant retryAt = ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                Duration delay = Duration.between(Instant.now(), retryAt);
+                return delay.isNegative() ? Duration.ZERO : delay;
+            } catch (RuntimeException invalidDate) {
+                return null;
+            }
+        }
+    }
+
+    private static String briefMessage(Object body) {
+        if (body == null) return null;
+        String message = body.toString().trim();
+        if (message.isEmpty()) return null;
+        return message.length() > 300 ? message.substring(0, 297) + "..." : message;
     }
 
     private static boolean containsResponseEntity(Object response) {

@@ -5,6 +5,7 @@ import com.github.orcas.orchestrator.core.api.Step;
 import com.github.orcas.orchestrator.core.api.WorkflowStep;
 import com.github.orcas.orchestrator.core.api.StepResult;
 import com.github.orcas.orchestrator.core.error.WorkflowError;
+import com.github.orcas.orchestrator.core.error.ErrorDisposition;
 import com.github.orcas.orchestrator.core.error.WorkflowErrorCategorizer;
 import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
 import com.github.orcas.orchestrator.core.model.Status;
@@ -28,18 +29,21 @@ final class WorkflowStepExecutor {
     private final Executor asyncExecutor;
     private final WorkflowErrorCategorizer categorizer;
     private final WorkflowObserver observer;
+    private final WorkflowRetryCoordinator retryCoordinator;
 
     WorkflowStepExecutor(
             WorkflowStateStore store,
             WorkflowEventPublisher publisher,
             Executor asyncExecutor,
             WorkflowErrorCategorizer categorizer,
-            WorkflowObserver observer) {
+            WorkflowObserver observer,
+            WorkflowRetryCoordinator retryCoordinator) {
         this.store = store;
         this.publisher = publisher;
         this.asyncExecutor = asyncExecutor;
         this.categorizer = categorizer;
         this.observer = observer;
+        this.retryCoordinator = retryCoordinator;
     }
 
     void execute(StatusEvent previous, WorkflowStep step) {
@@ -107,31 +111,45 @@ final class WorkflowStepExecutor {
             saveAndPublish(previous, step, execution, result);
         } catch (WorkflowRetryableException error) {
             observer.onFailure(execution, step, error);
-            if (error.replayable()) {
-                throw error;
-            }
-            publishFailure(previous, step, context, error.getMessage());
+            publishFailure(previous, step, context, error.error());
         } catch (WorkflowSuspendedException error) {
             observer.onFailure(execution, step, error);
-            publish(StatusEvent.of(
-                    previous.workflowId(), previous.workflow(), step.name(), Status.SUSPENDED,
-                    context.metadata().asMap(), error.getMessage()));
+            publishFailure(previous, step, context, error.error());
         } catch (Exception error) {
             observer.onFailure(execution, step, error);
-            var classification = categorizer.classify(error);
-            if (classification.replayable()) {
-                throw new WorkflowRetryableException(step.name(), classification);
-            }
-            publishFailure(previous, step, context, classification.reason());
+            publishFailure(previous, step, context, categorizer.classify(error));
         } finally {
             WorkflowContextHolder.clear();
         }
     }
 
-    private void publishFailure(StatusEvent previous, WorkflowStep step, WorkflowContext context, String reason) {
-        publish(StatusEvent.of(
-                previous.workflowId(), previous.workflow(), step.name(), Status.FAILED,
-                context.metadata().asMap(), reason));
+    private void publishFailure(StatusEvent previous, WorkflowStep step, WorkflowContext context,
+                                WorkflowError error) {
+        Status status;
+        if (error.disposition() == ErrorDisposition.REPLAYABLE) {
+            if (retryCoordinator != null && !retryCoordinator.automaticRetriesEnabled()) {
+                error = new WorkflowError(ErrorDisposition.SUSPEND, error.category(), error.code(),
+                        "Automatic retries are disabled: " + error.reason(), error.cause(), error.retryAfter());
+                status = Status.SUSPENDED;
+            } else if (retryCoordinator != null && retryCoordinator.retryAllowed(previous.workflowId(), step.name())) {
+                status = Status.SUSPENDED;
+            } else if (retryCoordinator == null) {
+                error = error.withDisposition(ErrorDisposition.SUSPEND);
+                status = Status.SUSPENDED;
+            } else {
+                error = new WorkflowError(ErrorDisposition.FAILED, error.category(), error.code(),
+                        "Automatic retries exhausted: " + error.reason(), error.cause());
+                status = Status.FAILED;
+            }
+        } else {
+            status = error.disposition() == ErrorDisposition.SUSPEND ? Status.SUSPENDED : Status.FAILED;
+        }
+
+        publish(StatusEvent.failure(previous.workflowId(), previous.workflow(), step.name(), status,
+                context.metadata().asMap(), error));
+        if (status == Status.SUSPENDED && error.disposition() == ErrorDisposition.REPLAYABLE) {
+            retryCoordinator.scheduleRetry(previous.workflowId(), step.name(), error);
+        }
     }
 
     private void saveAndPublish(
@@ -163,19 +181,10 @@ final class WorkflowStepExecutor {
         observer.onFailure(execution, step, error);
         WorkflowError classification = error instanceof WorkflowSuspendedException suspended
                 ? suspended.error()
+                : error instanceof WorkflowRetryableException retryable
+                ? retryable.error()
                 : categorizer.classify(error);
-
-        if (classification.replayable()) {
-            throw new CompletionException(new WorkflowRetryableException(step.name(), classification));
-        }
-
-        publish(StatusEvent.of(
-                previous.workflowId(),
-                previous.workflow(),
-                step.name(),
-                Status.SUSPENDED,
-                context.metadata().asMap(),
-                classification.reason()));
+        publishFailure(previous, step, context, classification);
     }
 
     private void publish(StatusEvent event) {
