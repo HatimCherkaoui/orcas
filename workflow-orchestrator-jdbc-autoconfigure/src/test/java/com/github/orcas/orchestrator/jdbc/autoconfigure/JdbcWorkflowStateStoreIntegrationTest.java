@@ -146,6 +146,39 @@ class JdbcWorkflowStateStoreIntegrationTest {
   }
 
   @Test
+  @DisplayName("finish preserves a suspended workflow status")
+  void finishPreservesSuspendedWorkflowStatus() {
+    var id = "workflow-suspended";
+    var workflow = "approval-flow";
+    stateStore.start(id, workflow, WorkflowContext.of(Map.of("orderId", "o-1")));
+    var event = new StatusEvent(id, workflow, "approval", Status.SUSPENDED, Map.of(), "awaiting approval", Instant.now());
+
+    stateStore.record(event, "approval-step");
+    stateStore.finish(event);
+
+    assertThat(columnValue("workflow", "status", id)).isEqualTo(Status.SUSPENDED.name());
+  }
+
+  @Test
+  @DisplayName("a successful step keeps the workflow running until the engine finishes it")
+  void successfulIntermediateStepDoesNotFinishWorkflow() {
+    var id = "workflow-intermediate-success";
+    var workflow = "fulfilment-flow";
+    stateStore.start(id, workflow, WorkflowContext.of(Map.of("orderId", "o-2")));
+    var event = new StatusEvent(id, workflow, "reserve-inventory", Status.SUCCESS,
+        Map.of(), "reserved", Instant.now());
+
+    stateStore.record(event, "reserve-step");
+
+    assertThat(columnValue("workflow", "status", id)).isEqualTo(Status.RUNNING.name());
+    assertThat(columnValue("workflow_step", "state", id, "reserve-inventory"))
+        .isEqualTo(Status.SUCCESS.name());
+
+    stateStore.finish(event);
+    assertThat(columnValue("workflow", "status", id)).isEqualTo(Status.SUCCESS.name());
+  }
+
+  @Test
   @DisplayName("saveStepContext stores and rehydrates step snapshots while updateContext refreshes the workflow context")
   void saveStepContextAndUpdateContextRoundTrip() {
     var id = "workflow-step-context";
@@ -250,7 +283,5 @@ class JdbcWorkflowStateStoreIntegrationTest {
   private record Payload(String value, int count) {
   }
 }
-
-
 
 

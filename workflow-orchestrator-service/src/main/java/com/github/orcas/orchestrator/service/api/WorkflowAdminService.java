@@ -33,6 +33,6 @@ public interface WorkflowAdminService {
     /** Re-executes a previously failed or suspended step from its last known input. */
     void replayStep(String workflowId, String stepName);
 
-    /** Replays every currently suspended step matching the provided workflow filters. */
+    /** Replays every failed or suspended step matching the provided workflow filters. */
     BatchReplayResult replaySuspendedSteps(WorkflowQuery query);
 }

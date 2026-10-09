@@ -244,7 +244,7 @@ class JdbcWorkflowAdminServiceIntegrationTest {
   @DisplayName("replaySuspendedSteps records replay history only for successful publishes")
   void replaySuspendedStepsRecordsSuccessfulPublishesOnly() {
     insertWorkflowWithStep("wf-a", "review-a", "SUSPENDED");
-    insertWorkflowWithStep("wf-b", "review-b", "SUSPENDED");
+    insertWorkflowWithStep("wf-b", "review-b", "FAILED");
 
     WorkflowAdminService service = new JdbcWorkflowAdminService(
         jdbc,
@@ -262,6 +262,18 @@ class JdbcWorkflowAdminServiceIntegrationTest {
     assertThat(result.failed()).isEqualTo(1);
     assertThat(count("workflow_step_log")).isEqualTo(1L);
     assertThat(columnValue("workflow_step_log", "step_name", "wf-a", "review-a")).isEqualTo("review-a");
+  }
+
+  @Test
+  @DisplayName("replayStep rejects a step that is not failed or suspended")
+  void replayStepRejectsSuccessfulStep() {
+    insertWorkflowWithStep("wf-complete-step", "review", "SUCCESS");
+    WorkflowAdminService service = new JdbcWorkflowAdminService(jdbc, new ObjectMapper(), (id, step) -> {});
+
+    assertThatThrownBy(() -> service.replayStep("wf-complete-step", "review"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("cannot be replayed while in state SUCCESS");
+    assertThat(count("workflow_step_log")).isZero();
   }
 
   private void insertWorkflowWithStep(String workflowId, String stepName, String state) {
@@ -400,4 +412,3 @@ class JdbcWorkflowAdminServiceIntegrationTest {
   }
 
 }
-

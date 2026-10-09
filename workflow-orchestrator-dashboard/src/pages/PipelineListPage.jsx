@@ -129,7 +129,8 @@ export default function PipelineListPage({ navigate }) {
   const load = useLoad(() => api.workflows(query), [JSON.stringify(query)], { interval: autoReload ? refreshInterval : 0 });
   const rawRows = Array.isArray(load.data) ? load.data : load.data?.content || load.data?.items || [];
   const rows = sortRows(rawRows, sort.key, sort.direction);
-  const suspendedFilterActive = filters.status === 'SUSPENDED' || filters.stepStatus === 'SUSPENDED';
+  const retryableFilterActive = ['SUSPENDED', 'FAILED'].includes(filters.status)
+    || ['SUSPENDED', 'FAILED'].includes(filters.stepStatus);
   const activeFilterCount = Object.entries(filters).filter(([key, value]) => !['page', 'size'].includes(key) && value).length;
 
   function updateFilter(key, value) {
@@ -203,10 +204,10 @@ export default function PipelineListPage({ navigate }) {
           title="Workflow Executions"
           subtitle="Real-time DAG monitoring, step diagnostics, retry states, and operator replay controls."
           actions={<>
-            {suspendedFilterActive && (
+            {retryableFilterActive && (
               <button className="button primary pulse-button" onClick={replaySuspended} disabled={batchReplay.running || !(load.data?.totalElements > 0)}>
                 <RotateCcw size={15} className={batchReplay.running ? 'spin' : ''} />
-                {batchReplay.running ? 'Replaying…' : 'Replay Suspended'}
+                {batchReplay.running ? 'Retrying…' : 'Retry Failed / Suspended'}
               </button>
             )}
             <AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} />
@@ -297,7 +298,7 @@ export default function PipelineListPage({ navigate }) {
         {/* Notices */}
         {batchReplay.result && (
           <div className="inline-notice success">
-            <CheckCircle2 size={15} /> Batch replay initiated: replayed {batchReplay.result.replayedCount ?? batchReplay.result.replayed ?? 'all'} suspended steps.
+            <CheckCircle2 size={15} /> Retry queued: {batchReplay.result.replayedCount ?? batchReplay.result.replayed ?? 'all'} failed or suspended step(s).
           </div>
         )}
         {batchReplay.error && (
@@ -375,10 +376,10 @@ export default function PipelineListPage({ navigate }) {
                       <button
                         className="action-pill-btn"
                         onClick={(e) => replaySingleRow(e, workflowId)}
-                        title="Replay Workflow"
+                        title="Retry failed or suspended steps in this workflow"
                       >
                         <RotateCcw size={12} />
-                        <span>Replay</span>
+                        <span>Retry</span>
                       </button>
                     )}
                     <button

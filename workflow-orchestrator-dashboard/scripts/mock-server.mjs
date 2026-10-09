@@ -608,7 +608,7 @@ const server = http.createServer(async (req, res) => {
     });
     return sendJson(res, 200, {
       status: 'SUCCESS',
-      message: `Batch replay initiated for ${count} suspended workflow(s)`,
+      message: `Retry initiated for ${count} failed or suspended workflow(s)`,
       replayedCount: count,
       replayed: count,
       matched: count,

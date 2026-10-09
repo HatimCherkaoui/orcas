@@ -154,6 +154,20 @@ public final class JdbcWorkflowAdminService implements WorkflowAdminService {
 
     @Override
     public void replayStep(String workflowId, String stepName) {
+        String state;
+        try {
+            state = jdbc.queryForObject("""
+                    select state from workflow_step
+                     where pipeline_id=:id and step_name=:step
+                    """, new MapSqlParameterSource()
+                    .addValue("id", workflowId, Types.VARCHAR)
+                    .addValue("step", stepName, Types.VARCHAR), String.class);
+        } catch (EmptyResultDataAccessException e) {
+            throw new EmptyResultDataAccessException("No step found for id " + stepName, 1);
+        }
+        if (!"FAILED".equals(state) && !"SUSPENDED".equals(state)) {
+            throw new IllegalStateException("Step " + stepName + " cannot be replayed while in state " + state);
+        }
         requireReplayPublisher().publish(workflowId, stepName);
         auditReplay(workflowId, stepName);
     }
@@ -189,7 +203,7 @@ public final class JdbcWorkflowAdminService implements WorkflowAdminService {
                 select ws.pipeline_id, ws.step_name
                   from workflow_step ws
                   join workflow w on w.pipeline_id = ws.pipeline_id
-                 where ws.state = 'SUSPENDED'
+                 where ws.state in ('SUSPENDED', 'FAILED')
                 """);
         MapSqlParameterSource parameters = new MapSqlParameterSource();
         appendWorkflowFilters(sql, parameters, query);

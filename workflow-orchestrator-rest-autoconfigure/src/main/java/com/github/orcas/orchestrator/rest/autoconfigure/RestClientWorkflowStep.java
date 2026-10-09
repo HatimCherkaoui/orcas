@@ -71,19 +71,31 @@ public class RestClientWorkflowStep extends Step {
             return StepResult.success(context);
         }
 
-        Object response = invoke(arguments);
-        if (isCacheable(response)) {
-            cache.put(method, arguments, response);
-        }
-        return responseHandler.handle(context, execution, response);
+        return invoke(arguments, context, execution);
     }
 
-    private Object invoke(Object[] arguments) throws Exception {
+    private StepResult invoke(Object[] arguments, WorkflowContext context, StepExecutionContext execution)
+            throws Exception {
         try {
-            return resolve(invocationInterceptor.invoke(
+            return (StepResult) invocationInterceptor.invoke(
                     method.getDeclaringClass(),
                     method,
-                    () -> method.invoke(client, arguments)));
+                    () -> {
+                        Object response;
+                        try {
+                            response = resolve(method.invoke(client, arguments));
+                        } catch (ReflectiveOperationException exception) {
+                            if (exception.getCause() != null) {
+                                throw exception.getCause();
+                            }
+                            throw exception;
+                        }
+                        StepResult result = responseHandler.handle(context, execution, response);
+                        if (isCacheable(response)) {
+                            cache.put(method, arguments, response);
+                        }
+                        return result;
+                    });
         } catch (ReflectiveOperationException exception) {
             if (exception.getCause() instanceof Exception cause) {
                 throw cause;

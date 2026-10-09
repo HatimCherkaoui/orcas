@@ -9,7 +9,10 @@ public class WorkflowKafkaProperties {
     private String topic = "workflow.status";
     private String replayTopic = "workflow.replay";
     private String consumerGroup = "workflow-orchestrator";
-    private int concurrency = 1;
+    private int concurrency = 4;
+    private int topicPartitions = 12;
+    private short topicReplicationFactor = 1;
+    private boolean waitForAcknowledgement = true;
     private boolean missingTopicsFatal = false;
     private boolean observationEnabled = false;
     private Retry retry = new Retry();
@@ -24,6 +27,12 @@ public class WorkflowKafkaProperties {
     public void setConsumerGroup(String value) { consumerGroup = value; }
     public int getConcurrency() { return concurrency; }
     public void setConcurrency(int value) { concurrency = value; }
+    public int getTopicPartitions() { return topicPartitions; }
+    public void setTopicPartitions(int value) { topicPartitions = value; }
+    public short getTopicReplicationFactor() { return topicReplicationFactor; }
+    public void setTopicReplicationFactor(short value) { topicReplicationFactor = value; }
+    public boolean isWaitForAcknowledgement() { return waitForAcknowledgement; }
+    public void setWaitForAcknowledgement(boolean value) { waitForAcknowledgement = value; }
     public boolean isMissingTopicsFatal() { return missingTopicsFatal; }
     public void setMissingTopicsFatal(boolean value) { missingTopicsFatal = value; }
     public boolean isObservationEnabled() { return observationEnabled; }

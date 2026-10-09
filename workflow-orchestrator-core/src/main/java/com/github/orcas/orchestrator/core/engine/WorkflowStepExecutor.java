@@ -105,17 +105,33 @@ final class WorkflowStepExecutor {
             observer.onStepStart(execution, step);
             StepResult result = ((Step) step).execute(context);
             saveAndPublish(previous, step, execution, result);
-            if (result.status() == Status.FAILED) {
-                throw new WorkflowRetryableException(step.name(), "Step returned FAILED");
+        } catch (WorkflowRetryableException error) {
+            observer.onFailure(execution, step, error);
+            if (error.replayable()) {
+                throw error;
             }
-        } catch (WorkflowRetryableException | WorkflowSuspendedException error) {
-            throw error;
+            publishFailure(previous, step, context, error.getMessage());
+        } catch (WorkflowSuspendedException error) {
+            observer.onFailure(execution, step, error);
+            publish(StatusEvent.of(
+                    previous.workflowId(), previous.workflow(), step.name(), Status.SUSPENDED,
+                    context.metadata().asMap(), error.getMessage()));
         } catch (Exception error) {
             observer.onFailure(execution, step, error);
-            throw new WorkflowRetryableException(step.name(), categorizer.classify(error));
+            var classification = categorizer.classify(error);
+            if (classification.replayable()) {
+                throw new WorkflowRetryableException(step.name(), classification);
+            }
+            publishFailure(previous, step, context, classification.reason());
         } finally {
             WorkflowContextHolder.clear();
         }
+    }
+
+    private void publishFailure(StatusEvent previous, WorkflowStep step, WorkflowContext context, String reason) {
+        publish(StatusEvent.of(
+                previous.workflowId(), previous.workflow(), step.name(), Status.FAILED,
+                context.metadata().asMap(), reason));
     }
 
     private void saveAndPublish(

@@ -330,7 +330,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
           {replaySuccess && <div className="inline-notice success panel-notice"><CheckCircle2 size={13} /> {replaySuccess}</div>}
           <button className="button primary" onClick={replay} disabled={replaying}>
             <RotateCcw size={14} strokeWidth={1.8} className={replaying ? 'spin' : ''} />
-            {replaying ? 'Replaying…' : 'Replay step now'}
+            {replaying ? 'Retrying…' : state === 'FAILED' ? 'Retry failed step' : 'Replay suspended step'}
           </button>
         </footer>
       )}

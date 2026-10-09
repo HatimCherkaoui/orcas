@@ -1,6 +1,5 @@
 package com.github.orcas.orchestrator.kafka.autoconfigure;
 
-import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -56,7 +55,8 @@ class WorkflowEventConsumerIntegrationTest {
     };
     WorkflowEventConsumer consumer = new WorkflowEventConsumer(provider, new ObjectMapper());
 
-    assertThatNoException().isThrownBy(() -> consumer.onMessage("{ invalid json }"));
+    assertThatThrownBy(() -> consumer.onMessage("{ invalid json }"))
+        .isInstanceOf(Exception.class);
     verify(engine, never()).handle(org.mockito.ArgumentMatchers.any());
   }
 
@@ -128,8 +128,6 @@ class WorkflowEventConsumerIntegrationTest {
         .hasMessageContaining("engine failure");
   }
 }
-
-
 
 
 

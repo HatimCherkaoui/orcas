@@ -14,7 +14,10 @@ public final class DefaultWorkflowErrorCategorizer implements WorkflowErrorCateg
                 return new WorkflowError(ErrorDisposition.REPLAYABLE, "transient I/O error", error);
             }
         }
-        return new WorkflowError(ErrorDisposition.SUSPEND, "non-replayable exception", error);
+        String reason = error == null || error.getMessage() == null || error.getMessage().isBlank()
+                ? "non-replayable exception"
+                : error.getMessage();
+        return new WorkflowError(ErrorDisposition.SUSPEND, reason, error);
     }
 
     @Override

@@ -5,14 +5,28 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workflow}
     username: ${DB_USER:workflow}
     password: ${DB_PASSWORD:workflow}
+    hikari:
+      # Leave headroom for business-layer queries and other application instances.
+      # Size this per instance against the RDS max_connections budget.
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:8}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      connection-timeout: 5000
   kafka:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        compression.type: zstd
+        linger.ms: 5
+        batch.size: 65536
+        buffer.memory: 33554432
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      max-poll-records: 250
   jpa:
     hibernate:
       ddl-auto: update
@@ -29,11 +43,16 @@ workflow:
       consumer-group: order-workflow-example
       replay-topic: workflow.replay
       replay-consumer-group: order-workflow-example-replay
-      concurrency: 1
+      concurrency: ${WORKFLOW_KAFKA_CONCURRENCY:4}
+      topic-partitions: ${WORKFLOW_KAFKA_PARTITIONS:12}
+      topic-replication-factor: 1
+      # Do not return an accepted launch or advance a workflow until Kafka has
+      # acknowledged the corresponding status event.
+      wait-for-acknowledgement: ${WORKFLOW_KAFKA_WAIT_FOR_ACKNOWLEDGEMENT:true}
       missing-topics-fatal: false
     async:
       virtual-threads: true
-      concurrency: 16
+      concurrency: ${WORKFLOW_ASYNC_CONCURRENCY:8}
     retry:
       enabled: true
       max-attempts: 3
@@ -49,7 +68,7 @@ workflow:
           max-attempts: 3
           delay: 1s
         refund-payment:
-          max-attempts: 1
+          max-attempts: 3
           delay: 2s
     rest-client:
       connect-timeout: 3s
@@ -69,6 +88,7 @@ demo:
     base-url: ${DEMO_NOTIFICATION_BASE_URL:http://localhost:8089}
   inventory:
     base-url: ${DEMO_INVENTORY_BASE_URL:http://localhost:8089}
+    seed-quantity: ${DEMO_INVENTORY_SEED_QUANTITY:1000}
 
 management:
   endpoints:
@@ -99,11 +119,11 @@ management:
 
 logging:
   level:
-    reactor.netty.http.client: DEBUG
-    org.springframework.web: DEBUG
-    org.springframework.kafka: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.springframework.boot.autoconfigure: DEBUG
-    org.springframework.boot: DEBUG
+    reactor.netty.http.client: INFO
+    org.springframework.web: INFO
+    org.springframework.kafka: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.boot.autoconfigure: INFO
+    org.springframework.boot: INFO
     org.springframework: ERROR
     com.github.ghik.orcas: DEBUG

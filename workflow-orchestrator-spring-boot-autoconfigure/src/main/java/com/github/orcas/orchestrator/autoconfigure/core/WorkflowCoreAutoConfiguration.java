@@ -19,7 +19,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.context.annotation.Bean;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 /** Base Spring wiring for the pure Java workflow engine. */
 @AutoConfiguration(afterName = {
@@ -71,8 +70,7 @@ public final class WorkflowCoreAutoConfiguration {
     @Bean(name = "workflowTaskExecutor", destroyMethod = "close")
     @ConditionalOnMissingBean(name = "workflowTaskExecutor")
     Executor workflowTaskExecutor(WorkflowAsyncProperties properties) {
-        if (properties.isVirtualThreads()) return Executors.newVirtualThreadPerTaskExecutor();
-        return Executors.newFixedThreadPool(properties.getConcurrency());
+        return new BoundedWorkflowExecutor(properties.isVirtualThreads(), properties.getConcurrency());
     }
 
     @Bean

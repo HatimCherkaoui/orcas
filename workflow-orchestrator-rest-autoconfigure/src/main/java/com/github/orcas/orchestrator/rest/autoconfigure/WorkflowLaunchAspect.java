@@ -39,14 +39,19 @@ public final class WorkflowLaunchAspect {
             Collections.list(request.getHeaderNames()).forEach(name -> headers.set(name, request.getHeader(name)));
         }
         var workflow = StepNames.workflow(launch.workflow());
-        engine.startAsync(
-                workflow,
-                WorkflowContext.of(body, headers.toSingleValueMap()))
-                .whenComplete((ignored, error) -> {
-                    if (error != null) {
-                        log.log(Level.SEVERE, "Failed to start workflow '" + workflow + "' asynchronously", error);
-                    }
-                });
+        try {
+            // Do not return an accepted response until the initial state is stored
+            // and Kafka acknowledges the INIT event. Otherwise a failed async start
+            // leaves a STARTED row with no event to drive it, and the caller cannot
+            // distinguish that from a workflow that is merely queued.
+            engine.startAsync(
+                    workflow,
+                    WorkflowContext.of(body, headers.toSingleValueMap()))
+                    .join();
+        } catch (java.util.concurrent.CompletionException error) {
+            log.log(Level.SEVERE, "Failed to start workflow '" + workflow + "'", error.getCause());
+            throw new IllegalStateException("Unable to start workflow '" + workflow + "'", error.getCause());
+        }
         return joinPoint.proceed();
     }
 }

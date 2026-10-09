@@ -8,9 +8,6 @@ import com.github.orcas.demo.repository.PaymentRepository;
 import com.github.orcas.orchestrator.core.builder.StepCatalog;
 import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
 import com.github.orcas.orchestrator.core.event.WorkflowEventPublisher;
-import io.restassured.RestAssured;
-import io.restassured.filter.log.RequestLoggingFilter;
-import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -46,6 +43,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -76,6 +75,7 @@ class OrderWorkflowIntegrationTest {
     @Container
     static final GenericContainer<?> WIREMOCK =
             new GenericContainer<>(DockerImageName.parse("wiremock/wiremock:3.13.2"))
+                    .withCommand("--global-response-templating")
                     .withExposedPorts(8080)
                     .waitingFor(Wait.forHttp("/__admin/").forStatusCode(200));
 
@@ -85,6 +85,12 @@ class OrderWorkflowIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        // Keep the integration workload within a small Colima/CI resource budget.
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> "4");
+        registry.add("spring.datasource.hikari.minimum-idle", () -> "1");
+        registry.add("spring.datasource.hikari.connection-timeout", () -> "5000");
+        registry.add("workflow.orchestrator.async.concurrency", () -> "4");
+        registry.add("workflow.orchestrator.kafka.concurrency", () -> "2");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         registry.add("spring.kafka.consumer.auto-offset-reset", () -> "earliest");
@@ -143,7 +149,6 @@ class OrderWorkflowIntegrationTest {
 
     @BeforeAll
     static void beforeAll() throws IOException, InterruptedException {
-        RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
         configureWireMock();
     }
 
@@ -187,6 +192,65 @@ class OrderWorkflowIntegrationTest {
                 }
                 """.formatted(customer.getId())).statusCode(202);
         await(() -> jdbcTemplate.queryForObject("select count(*) from workflow", Integer.class) > 0);
+    }
+
+    @Test
+    void testcontainersWorkflowBurstPerformance() {
+        final int workflows = 50;
+        Customer customer = customer();
+        stock("PERF-ITEM", workflows);
+        String body = """
+                {"customerId":%d,"items":[{"sku":"PERF-ITEM","quantity":1,"unitPrice":12345.01}]}
+                """.formatted(customer.getId());
+
+        java.time.OffsetDateTime launchedAfter = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        long startedAt = System.nanoTime();
+        try (var launchers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var requests = java.util.stream.IntStream.range(0, workflows)
+                    .mapToObj(i -> CompletableFuture.runAsync(
+                            () -> postApp("/orders", body).statusCode(202), launchers))
+                    .toList();
+            CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).join();
+        }
+        long launchFinishedAt = System.nanoTime();
+
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow
+                 where workflow='order-pipeline' and date_created >= ?
+                """, Integer.class, launchedAfter) == workflows
+                && jdbcTemplate.queryForObject("""
+                select count(*) from workflow
+                 where workflow='order-pipeline' and date_created >= ? and status='SUCCESS'
+                """, Integer.class, launchedAfter) == workflows);
+        System.out.printf("Burst state after workflow SUCCESS: orders=%d, payments=%d, steps=%s%n",
+                orders.count(), payments.count(), jdbcTemplate.queryForList("""
+                        select ws.step_name, ws.state, count(*) as count
+                          from workflow_step ws join workflow w using (pipeline_id)
+                         where w.workflow='order-pipeline' and w.date_created >= ?
+                         group by ws.step_name, ws.state order by ws.step_name, ws.state
+                        """, launchedAfter));
+        await(() -> orders.count() == workflows && payments.count() == workflows);
+        long completedAt = System.nanoTime();
+
+        double launchRate = workflows / ((launchFinishedAt - startedAt) / 1_000_000_000d);
+        double workflowRate = workflows / ((completedAt - startedAt) / 1_000_000_000d);
+        System.out.printf("Testcontainers concurrent burst: %d workflows, %.1f launch req/s, %.1f workflows/s end-to-end%n",
+                workflows, launchRate, workflowRate);
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from workflow
+                 where workflow='order-pipeline' and date_created >= ? and status='SUCCESS'
+                """, Integer.class, launchedAfter)).isEqualTo(workflows);
+        assertThat(orders.count()).isEqualTo(workflows);
+        assertThat(payments.count()).isEqualTo(workflows);
+        // Verify the same completed rows through the API used by the dashboard.
+        given().port(port)
+                .queryParam("workflow", "order-pipeline")
+                .queryParam("status", "SUCCESS")
+                .queryParam("createdFrom", launchedAfter.toInstant().toString())
+                .queryParam("size", 100)
+                .when().get("/api/orchestrator/workflows")
+                .then().statusCode(200)
+                .body("totalElements", org.hamcrest.Matchers.equalTo(workflows));
     }
 
     @Test
@@ -300,6 +364,41 @@ class OrderWorkflowIntegrationTest {
     }
 
     @Test
+    void dashboardCanRetryFailedWorkflowOrRetryItsFailedStepDirectly() {
+        Customer customer = customer();
+        Inventory directRetryStock = stock("RETRY-STEP", 0);
+        String directRetryBody = retryOrderBody(customer, "RETRY-STEP");
+        java.time.OffsetDateTime directStarted = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        postApp("/orders", directRetryBody).statusCode(202);
+        String directWorkflowId = awaitFailedWorkflow(directStarted);
+
+        directRetryStock.setQuantity(1);
+        inventory.save(directRetryStock);
+        given().port(port).contentType(ContentType.JSON).when()
+                .post("/api/orchestrator/workflows/{id}/steps/{step}/replay", directWorkflowId, "validate-and-reserve")
+                .then().statusCode(202);
+        await(() -> jdbcTemplate.queryForObject("select status from workflow where pipeline_id=?", String.class,
+                directWorkflowId).equals("SUCCESS") && orders.count() == 1 && payments.count() == 1);
+
+        Inventory batchRetryStock = stock("RETRY-WORKFLOW", 0);
+        String batchRetryBody = retryOrderBody(customer, "RETRY-WORKFLOW");
+        java.time.OffsetDateTime batchStarted = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC);
+        postApp("/orders", batchRetryBody).statusCode(202);
+        String batchWorkflowId = awaitFailedWorkflow(batchStarted);
+
+        batchRetryStock.setQuantity(1);
+        inventory.save(batchRetryStock);
+        given().port(port).contentType(ContentType.JSON)
+                .body(Map.of("workflowId", batchWorkflowId, "page", 0, "size", 25))
+                .when().post("/api/orchestrator/workflows/replay")
+                .then().statusCode(200)
+                .body("matched", org.hamcrest.Matchers.equalTo(1))
+                .body("replayed", org.hamcrest.Matchers.equalTo(1));
+        await(() -> jdbcTemplate.queryForObject("select status from workflow where pipeline_id=?", String.class,
+                batchWorkflowId).equals("SUCCESS") && orders.count() == 2 && payments.count() == 2);
+    }
+
+    @Test
     void shouldRefundAfterExplicitRefundCallback() {
         Customer customer = customer();
         stock("ORCA-REFUND", 4);
@@ -326,7 +425,13 @@ class OrderWorkflowIntegrationTest {
                 {"orderId":%d,"paymentId":"%s"}
                 """.formatted(order.getId(), payment.getProviderPaymentId())).statusCode(202);
 
-        awaitOrder(o -> o.getId().equals(order.getId()) && o.getStatus() == OrderStatus.REFUNDED);
+        await(() -> orders.findById(order.getId())
+                        .filter(o -> o.getStatus() == OrderStatus.REFUNDED).isPresent(),
+                () -> "refund did not complete: order=" + orders.findById(order.getId()).map(Order::getStatus)
+                        + ", payment=" + payments.findByOrderId(order.getId()).map(Payment::getStatus)
+                        + ", refundRequests=" + wireMockCountAsInt("/payments/pay-it-success/refund")
+                        + ", workflows=" + jdbcTemplate.queryForList(
+                                "select workflow, status from workflow order by date_created desc limit 5"));
         assertThat(payments.findByOrderId(order.getId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
         awaitWireMockRequest("/payments/pay-it-success/refund");
@@ -341,6 +446,24 @@ class OrderWorkflowIntegrationTest {
 
     private Inventory stock(String sku, int quantity) {
         return inventory.save(new Inventory(sku, sku, quantity));
+    }
+
+    private String retryOrderBody(Customer customer, String sku) {
+        return """
+                {"customerId":%d,"items":[{"sku":"%s","quantity":1,"unitPrice":12345.01}]}
+                """.formatted(customer.getId(), sku);
+    }
+
+    private String awaitFailedWorkflow(java.time.OffsetDateTime createdAfter) {
+        await(() -> jdbcTemplate.queryForObject("""
+                select count(*) from workflow
+                 where workflow='order-pipeline' and date_created >= ? and status='FAILED'
+                """, Integer.class, createdAfter) == 1);
+        return jdbcTemplate.queryForObject("""
+                select pipeline_id from workflow
+                 where workflow='order-pipeline' and date_created >= ? and status='FAILED'
+                 order by date_created desc limit 1
+                """, String.class, createdAfter);
     }
 
     private io.restassured.response.ValidatableResponse postApp(String path, String json) {
@@ -376,18 +499,22 @@ class OrderWorkflowIntegrationTest {
     }
 
     private static void await(BooleanSupplier condition) {
+        await(condition, () -> "condition within 20 seconds");
+    }
+
+    private static void await(BooleanSupplier condition, java.util.function.Supplier<String> failureDescription) {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (System.nanoTime() < deadline) {
             if (condition.getAsBoolean()) return;
             try {
-                Thread.sleep(100);
+                Thread.sleep(250);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new AssertionError("Interrupted while waiting", e);
             }
         }
         assertThat(condition.getAsBoolean())
-                .as("condition within 20 seconds")
+                .as(failureDescription.get())
                 .isTrue();
     }
 
@@ -403,6 +530,7 @@ class OrderWorkflowIntegrationTest {
         String notification_failed = Files.readString(Path.of("../wiremock/mappings/notification-failed.json"));
         String notification_success = Files.readString(Path.of("../wiremock/mappings/notification-success.json"));
         String payment = Files.readString(Path.of("../wiremock/mappings/payment.json"));
+        String paymentPerf = Files.readString(Path.of("../wiremock/mappings/payment-perf.json"));
 
         String refund = Files.readString(Path.of("../wiremock/mappings/refund.json"));
         String refund2 = Files.readString(Path.of("../wiremock/mappings/refund-2.json"));
@@ -418,6 +546,7 @@ class OrderWorkflowIntegrationTest {
         for (String mapping : new String[]{
                 notification_failed,
                 notification_success,
+                paymentPerf,
                 payment,
                 refund,
                 refund2,

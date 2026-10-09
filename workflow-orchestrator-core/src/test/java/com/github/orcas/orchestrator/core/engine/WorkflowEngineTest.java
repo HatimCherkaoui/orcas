@@ -87,6 +87,26 @@ class WorkflowEngineTest {
         });
     }
 
+    @Test
+    void publishesTerminalFailureForNonReplayableSynchronousStepErrors() {
+        var failing = new FailingStep();
+        var registry = new WorkflowRegistry();
+        registry.register(new WorkflowDefinition("orders", List.of(
+                new WorkflowDefinition.Route(StatusCriteria.init(), List.of(failing), null, null))));
+        var store = new InMemoryWorkflowStateStore();
+        var events = new ArrayList<StatusEvent>();
+        var engine = new WorkflowEngine(registry, events::add, store, executor);
+        store.start("wf-fail", "orders", WorkflowContext.of("order-1"));
+
+        engine.handle(StatusEvent.of("wf-fail", "orders", StepNames.INIT, Status.INIT, java.util.Map.of(), "start"));
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.step()).isEqualTo(failing.name());
+            assertThat(event.status()).isEqualTo(Status.FAILED);
+            assertThat(event.message()).contains("business validation failed");
+        });
+    }
+
     @com.github.orcas.orchestrator.core.annotation.WorkflowStep("validate")
     static final class ValidateStep extends Step {
         @Override
@@ -100,6 +120,14 @@ class WorkflowEngineTest {
         @Override
         public StepResult execute(WorkflowContext context) {
             return StepResult.success(context);
+        }
+    }
+
+    @com.github.orcas.orchestrator.core.annotation.WorkflowStep("failing-step")
+    static final class FailingStep extends Step {
+        @Override
+        public StepResult execute(WorkflowContext context) {
+            throw new IllegalStateException("business validation failed");
         }
     }
 }

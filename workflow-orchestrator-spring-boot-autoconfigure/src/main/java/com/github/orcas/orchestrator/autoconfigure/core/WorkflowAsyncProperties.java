@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("workflow.orchestrator.async")
 public class WorkflowAsyncProperties {
     private boolean virtualThreads = true;
-    private int concurrency = 16;
+    private int concurrency = 8;
 
     public boolean isVirtualThreads() { return virtualThreads; }
     public void setVirtualThreads(boolean value) { virtualThreads = value; }

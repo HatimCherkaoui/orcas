@@ -163,7 +163,14 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
                         now);
             }
 
-            String workflowStatus = event.status().name();
+            // A step can succeed while downstream steps still need to run. The
+            // engine calls finish() only after route matching proves this event
+            // ends the workflow, so step-terminal states must not make the
+            // workflow row look terminal in the dashboard yet.
+            String workflowStatus = switch (event.status()) {
+                case SUCCESS, FAILED, SKIPPED -> Status.RUNNING.name();
+                default -> event.status().name();
+            };
 
             jdbc.update("""
                             update workflow
@@ -199,7 +206,7 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
         OffsetDateTime now = event.timestamp() == null
                 ? OffsetDateTime.now(ZoneOffset.UTC)
                 : OffsetDateTime.ofInstant(event.timestamp(), ZoneOffset.UTC);
-        String status = event.status() == Status.FAILED ? Status.FAILED.name() : Status.SUCCESS.name();
+        String status = event.status().name();
         log.fine("Marking workflow instance " + event.workflowId() + " as finished with status " + status);
         transactions.execute(() -> {
             jdbc.update("update workflow set status=:status,date_updated=:updated where pipeline_id=:id",

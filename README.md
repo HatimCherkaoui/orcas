@@ -118,6 +118,39 @@ Each module owns its configuration namespace:
 
 An unused integration does not require its configuration.
 
+### Kafka and database throughput
+
+The Kafka integration defaults to four listener consumers and creates new workflow topics
+with 12 partitions. Keep the consumer concurrency at or below the topic partition count;
+Kafka topics that already exist are not repartitioned by Spring's topic declaration, so
+increase their partition count with your Kafka administrator before raising concurrency.
+Topic replication defaults to one for local and single-broker environments. Set
+`workflow.orchestrator.kafka.topic-replication-factor` to the broker-supported replication
+factor (commonly 3) in a production cluster.
+
+Workflow event publication is asynchronous by default so the Kafka producer can batch sends
+instead of blocking every workflow thread for a broker round trip. Send failures are logged;
+configure `spring.kafka.producer.acks=all`, `spring.kafka.producer.properties.enable.idempotence=true`,
+and sensible producer retries for durability. Set
+`workflow.orchestrator.kafka.wait-for-acknowledgement=true` when the caller must wait for the
+broker acknowledgement before returning. Listener processing retries failures and routes
+records that exceed the retry limit to `<topic>.DLT`, where operators can inspect and replay
+them. A practical starting point for EC2 workloads is `linger.ms=5`, `batch.size=65536`, and
+`compression.type=zstd`; tune from measured payloads, broker capacity, and latency objectives.
+
+The orchestrator uses the application's `DataSource`; it does not create a separate pool.
+For RDS, budget `pool size × application instances` against the database connection limit,
+reserving capacity for business queries and administration. The example defaults to an
+8-connection pool and 8 active workflow tasks, configurable with `DB_POOL_MAX_SIZE` and
+`WORKFLOW_ASYNC_CONCURRENCY`; size both for the instance count and the RDS class. Set
+`DB_POOL_MIN_IDLE` low on horizontally scaled EC2 instances to avoid every instance holding
+idle connections. Workflow tasks use virtual threads by default, while a semaphore applies
+backpressure at the configured concurrency instead of accumulating an unbounded task queue.
+The Testcontainers burst scenario in `OrderWorkflowIntegrationTest` launches concurrent
+requests against Kafka and PostgreSQL, with intentionally smaller pool and worker limits for
+local Docker/Colima. It reports launch and workflow rates; these local numbers are a baseline,
+not an EC2/RDS capacity guarantee.
+
 ## Build
 
 Java 25 and Maven 3.9.6+ are required.
