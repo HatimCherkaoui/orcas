@@ -198,6 +198,17 @@ Maven coordinates use `io.github.hatimcherkaoui`; Java imports continue to use
 `com.github.orcas`. The current `0.6.0-SNAPSHOT` is a development POC, not a published
 Maven Central release. Install it locally with `mvn install` before using the BOM example.
 
+## Correlation and observability
+
+Executions carry generated request, correlation, transaction and trace identifiers.
+Only allowlisted identifiers and validated W3C trace context are captured from transport
+headers. Identifiers propagate across HTTP, Kafka, steps and retries; the dashboard
+supports copying each value. The optional observability starter instruments workflow,
+criteria, JDBC and transport operations and exports logs and metrics.
+
+See [Execution correlation and the ready-to-use Kibana dashboard](observability/README.md)
+for setup, extension APIs, field names, resource limits and verification commands.
+
 ## Documentation and support
 
 - [Architecture](docs/architecture.md) and [module selection](docs/module-selection.md)

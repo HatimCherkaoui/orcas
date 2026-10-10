@@ -6,7 +6,7 @@ import java.util.Map;
 public record WorkflowContext(Object businessInput, Metadata metadata) {
 
     public WorkflowContext {
-        metadata = metadata == null ? new Metadata() : metadata;
+        metadata = CorrelationIdentifiers.ensure(metadata == null ? new Metadata() : metadata);
     }
 
     public static WorkflowContext of(Object input) {
@@ -14,7 +14,7 @@ public record WorkflowContext(Object businessInput, Metadata metadata) {
     }
 
     public static WorkflowContext of(Object input, Map<String, String> headers) {
-        return new WorkflowContext(input, new Metadata(headers));
+        return new WorkflowContext(input, CorrelationIdentifiers.fromHeaders(headers));
     }
 
     public WorkflowContext withBusinessInput(Object input) {

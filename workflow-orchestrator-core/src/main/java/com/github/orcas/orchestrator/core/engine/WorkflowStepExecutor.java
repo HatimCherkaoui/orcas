@@ -62,7 +62,10 @@ final class WorkflowStepExecutor {
             return;
         }
 
-        executeSynchronously(previous, step, context, execution);
+        try (var operation = observer.telemetry().begin("Step", "workflow.step " + step.name(), context.metadata(),
+                java.util.Map.of("workflowId", previous.workflowId(), "workflow", previous.workflow(), "workflowStep", step.name()))) {
+            operation.attribute("status",executeSynchronously(previous, step, context, execution).name());
+        }
     }
 
     private void executeAsync(
@@ -80,50 +83,68 @@ final class WorkflowStepExecutor {
                 "async step started"));
 
         CompletableFuture.supplyAsync(() -> {
+            var previousExecution = WorkflowContextHolder.execution();
             WorkflowContextHolder.set(previous.workflowId(), previous.workflow(), execution);
             observer.onStepStart(execution, step);
-            try {
-                return async.executeAsync(context);
+            try (var operation = observer.telemetry().begin("Step", "workflow.step " + step.name(), context.metadata(),
+                    java.util.Map.of("workflowId", previous.workflowId(), "workflow", previous.workflow(), "workflowStep", step.name()))) {
+                try {
+                    var result = async.executeAsync(context);
+                    operation.attribute("status",result.status().name());
+                    return result;
+                } catch (Exception error) { operation.error(error); throw error; }
             } catch (Exception error) {
                 throw new CompletionException(error);
             } finally {
-                WorkflowContextHolder.clear();
+                WorkflowContextHolder.restore(previousExecution);
             }
         }, asyncExecutor)
                 .thenAcceptAsync(
-                        result -> saveAndPublish(previous, step, execution, result),
+                        result -> WorkflowContextHolder.with(new WorkflowContextHolder.Execution(previous.workflowId(),previous.workflow(),context,execution), () -> {
+                            try (var operation = observer.telemetry().begin("Step","workflow.step.complete " + step.name(),context.metadata(),
+                                    java.util.Map.of("workflowId",previous.workflowId(),"workflow",previous.workflow(),"workflowStep",step.name()))) {
+                                saveAndPublish(previous,step,execution,result);
+                            }
+                            return null;
+                        }),
                         asyncExecutor)
-                .exceptionally(error -> {
-                    handleFailure(previous, step, unwrap(error), context, execution);
+                .exceptionally(error -> WorkflowContextHolder.with(new WorkflowContextHolder.Execution(previous.workflowId(),previous.workflow(),context,execution), () -> {
+                    try (var operation = observer.telemetry().begin("Step","workflow.step.failure " + step.name(),context.metadata(),
+                            java.util.Map.of("workflowId",previous.workflowId(),"workflow",previous.workflow(),"workflowStep",step.name()))) {
+                        operation.attribute("status","FAILED");
+                        handleFailure(previous,step,unwrap(error),context,execution);
+                    }
                     return null;
-                });
+                }));
     }
 
-    private void executeSynchronously(
+    private Status executeSynchronously(
             StatusEvent previous,
             WorkflowStep step,
             WorkflowContext context,
             StepExecutionContext execution) {
+        var previousExecution = WorkflowContextHolder.execution();
         try {
             WorkflowContextHolder.set(previous.workflowId(), previous.workflow(), execution);
             observer.onStepStart(execution, step);
             StepResult result = ((Step) step).execute(context);
             saveAndPublish(previous, step, execution, result);
+            return result.status();
         } catch (WorkflowRetryableException error) {
             observer.onFailure(execution, step, error);
-            publishFailure(previous, step, context, error.error());
+            return publishFailure(previous, step, context, error.error());
         } catch (WorkflowSuspendedException error) {
             observer.onFailure(execution, step, error);
-            publishFailure(previous, step, context, error.error());
+            return publishFailure(previous, step, context, error.error());
         } catch (Exception error) {
             observer.onFailure(execution, step, error);
-            publishFailure(previous, step, context, categorizer.classify(error));
+            return publishFailure(previous, step, context, categorizer.classify(error));
         } finally {
-            WorkflowContextHolder.clear();
+            WorkflowContextHolder.restore(previousExecution);
         }
     }
 
-    private void publishFailure(StatusEvent previous, WorkflowStep step, WorkflowContext context,
+    private Status publishFailure(StatusEvent previous, WorkflowStep step, WorkflowContext context,
                                 WorkflowError error) {
         Status status;
         if (error.disposition() == ErrorDisposition.REPLAYABLE) {
@@ -150,6 +171,7 @@ final class WorkflowStepExecutor {
         if (status == Status.SUSPENDED && error.disposition() == ErrorDisposition.REPLAYABLE) {
             retryCoordinator.scheduleRetry(previous.workflowId(), step.name(), error);
         }
+        return status;
     }
 
     private void saveAndPublish(
@@ -157,6 +179,9 @@ final class WorkflowStepExecutor {
             WorkflowStep step,
             StepExecutionContext execution,
             StepResult result) {
+        // A step may return a fresh context; execution identifiers must survive that replacement.
+        execution.workflowContext().metadata().identifiers().forEach(result.context().metadata()::put);
+        com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.ensure(result.context().metadata());
         execution.output(result.context().businessInput());
         store.saveStepContext(snapshot(execution));
         store.updateContext(previous.workflowId(), result.context());

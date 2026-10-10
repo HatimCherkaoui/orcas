@@ -18,7 +18,7 @@ public final class WorkflowRestClientProperties {
     private Duration pendingAcquireTimeout = Duration.ofSeconds(45);
     private final Map<String, String> defaultHeaders = new LinkedHashMap<>();
     private final List<String> propagatedMetadataKeys = new ArrayList<>(
-            List.of("correlationid", "x-correlation-id", "traceparent", "baggage"));
+            List.of("correlationid", "x-correlation-id", "x-request-id", "x-transaction-id", "x-trace-id", "traceparent", "tracestate"));
     private final Security security = new Security();
     private final Cache cache = new Cache();
 

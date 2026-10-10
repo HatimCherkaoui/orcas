@@ -68,9 +68,12 @@ public final class WorkflowKafkaAutoConfiguration {
     workflowKafkaListenerContainerFactory(
             ConsumerFactory<String, String> factory,
             KafkaTemplate<String, String> template,
-            WorkflowKafkaProperties properties) {
+            WorkflowKafkaProperties properties,
+            org.springframework.beans.factory.ObjectProvider<io.micrometer.observation.ObservationRegistry> observations) {
         var listener = new ConcurrentKafkaListenerContainerFactory<String, String>();
         listener.setConsumerFactory(factory);
+        listener.getContainerProperties().setObservationEnabled(true);
+        listener.getContainerProperties().setObservationRegistry(observations.getIfAvailable(() -> io.micrometer.observation.ObservationRegistry.NOOP));
         listener.setConcurrency(properties.getConcurrency());
         listener.getContainerProperties().setMissingTopicsFatal(properties.isMissingTopicsFatal());
         long retries = properties.getRetry().isEnabled()

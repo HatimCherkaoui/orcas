@@ -8,7 +8,8 @@
     "mock": "node scripts/mock-server.mjs",
     "dev:mock": "node scripts/mock-server.mjs & vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/utils/observability.test.js"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

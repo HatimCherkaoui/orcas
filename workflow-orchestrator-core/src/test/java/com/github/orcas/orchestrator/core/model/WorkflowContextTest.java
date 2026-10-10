@@ -23,6 +23,6 @@ class WorkflowContextTest {
         var context = new WorkflowContext("order-1", null);
 
         assertThat(context.metadata()).isNotNull();
-        assertThat(context.metadata().asMap()).isEmpty();
+        assertThat(context.metadata().identifiers()).containsKeys("requestId","correlationId","transactionId","traceId");
     }
 }

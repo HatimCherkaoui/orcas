@@ -26,6 +26,27 @@ public final class Metadata {
         }
     }
 
+    /** Reads an allowlisted identifier using its canonical name or HTTP header alias. */
+    public String identifier(String name) {
+        String key = CorrelationIdentifiers.canonical(name);
+        return key == null ? null : get(key);
+    }
+
+    public Metadata withIdentifier(String name, String value) {
+        String key = CorrelationIdentifiers.canonical(name);
+        if (key == null || !CorrelationIdentifiers.valid(key, value)) throw new IllegalArgumentException("Invalid identifier: " + name);
+        put(key, value);
+        return this;
+    }
+
+    public void remove(String key) { if (key != null) values.remove(key); }
+
+    public Map<String, String> identifiers() {
+        var identifiers = new java.util.LinkedHashMap<String, String>();
+        values.forEach((key, value) -> { if (CorrelationIdentifiers.isIdentifier(key)) identifiers.put(key, value); });
+        return Map.copyOf(identifiers);
+    }
+
     public Map<String, String> asMap() {
         return Map.copyOf(values);
     }

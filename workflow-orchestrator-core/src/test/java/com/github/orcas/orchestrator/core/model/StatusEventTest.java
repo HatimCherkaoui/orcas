@@ -21,7 +21,7 @@ class StatusEventTest {
         metadata.put("another", "value");
 
         assertThat(event.metadata())
-                .containsExactly(Map.entry("correlationId", "corr-1"));
+                .containsEntry("correlationId", "corr-1").containsKeys("requestId","transactionId","traceId").doesNotContainKey("another");
     }
 
     @Test

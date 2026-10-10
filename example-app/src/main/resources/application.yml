@@ -12,6 +12,8 @@ spring:
       minimum-idle: ${DB_POOL_MIN_IDLE:1}
       connection-timeout: 5000
   kafka:
+    template:
+      observation-enabled: true
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -34,6 +36,9 @@ spring:
 
 workflow:
   orchestrator:
+    observability:
+      metrics-export: ${OTEL_METRICS_ENABLED:true}
+      metrics-endpoint: ${OTEL_METRICS_ENDPOINT:http://localhost:4318/v1/metrics}
     jdbc:
       enabled: true
       schema-initialization: true
@@ -96,6 +101,15 @@ demo:
     seed-quantity: ${DEMO_INVENTORY_SEED_QUANTITY:1000}
 
 management:
+  otlp:
+    metrics:
+      export:
+        url: ${OTEL_METRICS_ENDPOINT:http://localhost:4318/v1/metrics}
+        step: 30s
+        aggregation-temporality: delta
+        resource-attributes:
+          service.name: ${spring.application.name}
+        enabled: ${OTEL_METRICS_ENABLED:true}
   endpoints:
     web:
       exposure:
@@ -116,11 +130,11 @@ management:
     tracing:
       export:
         otlp:
-          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
     logging:
       export:
         otlp:
-          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/logs}
+          endpoint: ${OTEL_LOGS_ENDPOINT:http://localhost:4318/v1/logs}
 
 logging:
   level:

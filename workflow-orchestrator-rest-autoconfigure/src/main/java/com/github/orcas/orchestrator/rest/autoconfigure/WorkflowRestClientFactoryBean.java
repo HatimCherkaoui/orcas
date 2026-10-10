@@ -42,6 +42,9 @@ public final class WorkflowRestClientFactoryBean<T>
     private final Environment environment;
     private final ObjectProvider<WebClientCustomizer> customizers;
 
+    private com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry = com.github.orcas.orchestrator.core.engine.WorkflowTelemetry.noop();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTelemetry(com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry) { this.telemetry = telemetry; }
     private T proxy;
     private ConnectionProvider connectionProvider;
 
@@ -106,29 +109,25 @@ public final class WorkflowRestClientFactoryBean<T>
             ClientRequest request,
             org.springframework.web.reactive.function.client.ExchangeFunction next) {
         var context = WorkflowContextHolder.current();
-        if (context == null || properties.getPropagatedMetadataKeys().isEmpty()) {
-            return next.exchange(request);
+        var metadata = context == null ? com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.fromHeaders(request.headers().toSingleValueMap()) : context.metadata();
+        var execution = WorkflowContextHolder.execution();
+        var attributes = new java.util.LinkedHashMap<String,String>();
+        attributes.put("http.request.method", request.method().name());
+        attributes.put("server.address", request.url().getHost());
+        if (execution != null && execution.workflowId() != null) {
+            attributes.put("workflowId", execution.workflowId()); attributes.put("workflow", execution.workflow());
+            if (execution.step() != null) attributes.put("workflowStep", execution.step().stepName());
         }
-
-        var requestBuilder = ClientRequest.from(request);
-        context.metadata().asMap().forEach((key, value) -> propagateMetadata(request, requestBuilder, key, value));
-        return next.exchange(requestBuilder.build());
-    }
-
-    private void propagateMetadata(
-            ClientRequest request,
-            ClientRequest.Builder requestBuilder,
-            String key,
-            String value) {
-        if (isPropagatedKey(key) && !request.headers().containsHeader(key)) {
-            requestBuilder.header(key, value);
-        }
-    }
-
-    private boolean isPropagatedKey(String key) {
-        return properties.getPropagatedMetadataKeys()
-                .stream()
-                .anyMatch(configured -> configured.equalsIgnoreCase(key));
+        var operation = telemetry.begin("RestCall", "http.client " + request.method().name(), metadata, attributes);
+        var builder = ClientRequest.from(request);
+        var headers = operation.propagation();
+        if (headers.isEmpty()) headers = com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.headers(metadata);
+        headers.forEach((key,value) -> builder.headers(h -> h.set(key,value)));
+        try {
+            return next.exchange(builder.build()).doOnNext(response -> operation.attribute("http.response.status_code",Integer.toString(response.statusCode().value())))
+                    .doOnError(operation::error).doFinally(signal -> operation.close());
+        } catch (RuntimeException error) { operation.error(error); operation.close(); throw error; }
+        finally { operation.detach(); }
     }
 
     private void applyDefaultHeaders(WebClient.Builder builder) {

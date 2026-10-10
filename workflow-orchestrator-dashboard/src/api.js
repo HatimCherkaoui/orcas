@@ -1,3 +1,4 @@
+import { newIdentifier } from './utils/observability';
 const API_BASE = (import.meta.env.VITE_API_URL || '/api/orchestrator').replace(/\/$/, '');
 
 function query(params = {}) {
@@ -30,6 +31,8 @@ function normalizeError(status, statusText, body, path) {
   return error;
 }
 
+const dashboardCorrelationId = newIdentifier();
+
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
   let response;
@@ -37,6 +40,9 @@ async function request(path, options = {}) {
     response = await fetch(url, {
       headers: {
         Accept: 'application/json',
+        'X-Request-ID': newIdentifier(),
+        'X-Transaction-ID': newIdentifier(),
+        'X-Correlation-ID': dashboardCorrelationId,
         ...(options.body != null ? { 'Content-Type': 'application/json' } : {}),
         ...(options.headers || {}),
       },

@@ -21,6 +21,8 @@ public interface WorkflowObserver {
     default void onFailure(StepExecutionContext execution, WorkflowStep step, Throwable error) {
     }
 
+    default WorkflowTelemetry telemetry() { return WorkflowTelemetry.noop(); }
+
     static WorkflowObserver noop() {
         return new WorkflowObserver() {
         };

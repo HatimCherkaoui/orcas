@@ -12,8 +12,11 @@ import org.slf4j.MDC;
 public final class WorkflowMdcObserver implements WorkflowObserver {
     private static final Logger log = LoggerFactory.getLogger(WorkflowMdcObserver.class);
     private final WorkflowObservabilityProperties properties;
+    private final com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry;
+    @Override public com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry() { return telemetry; }
 
-    public WorkflowMdcObserver(WorkflowObservabilityProperties properties) { this.properties = properties; }
+    public WorkflowMdcObserver(WorkflowObservabilityProperties properties) { this(properties, com.github.orcas.orchestrator.core.engine.WorkflowTelemetry.noop()); }
+    public WorkflowMdcObserver(WorkflowObservabilityProperties properties, com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry) { this.properties = properties; this.telemetry = telemetry; }
 
     @Override public void onStart(String workflowId, String workflow) {
         if (!properties.isEvents()) return;
@@ -26,30 +29,32 @@ public final class WorkflowMdcObserver implements WorkflowObserver {
     }
 
     @Override public void onStepStart(StepExecutionContext execution, WorkflowStep step) {
-        if (properties.isMdc()) bind(execution);
-        if (properties.isEvents()) log.debug("Workflow step started: {}", step.name());
+        logged(execution, () -> { if (properties.isEvents()) log.info("Workflow step started: {}", step.name()); });
     }
 
     @Override public void onStepEnd(StepExecutionContext execution, WorkflowStep step, StatusEvent event) {
-        if (properties.isEvents()) log.debug("Workflow step finished: {} -> {}", step.name(), event.status());
-        if (properties.isMdc()) clear();
+        logged(execution, () -> { if (properties.isEvents()) log.info("Workflow step finished: {} -> {}", step.name(), event.status()); });
     }
 
     @Override public void onFailure(StepExecutionContext execution, WorkflowStep step, Throwable error) {
-        if (properties.isMdc()) bind(execution);
-        if (properties.isEvents()) log.debug("Workflow step failed: {}", step.name(), error);
-        if (properties.isMdc()) clear();
+        io.opentelemetry.api.trace.Span.current().recordException(error);
+        io.opentelemetry.api.trace.Span.current().setStatus(io.opentelemetry.api.trace.StatusCode.ERROR);
+        logged(execution, () -> { if (properties.isEvents()) log.warn("Workflow step failed: {}", step.name(), error); });
     }
 
+    private void logged(StepExecutionContext execution, Runnable action) {
+        var previous = MDC.getCopyOfContextMap();
+        try { if (properties.isMdc()) bind(execution); action.run(); }
+        finally { if (previous == null) MDC.clear(); else MDC.setContextMap(previous); }
+    }
     private void bind(StepExecutionContext execution) {
+        execution.workflowContext().metadata().identifiers().forEach(MDC::put);
         MDC.put("workflowId", execution.workflowId());
         MDC.put("workflow", execution.workflow());
         MDC.put("workflowStep", execution.stepName());
     }
-
     private void clear() {
-        MDC.remove("workflowId");
-        MDC.remove("workflow");
-        MDC.remove("workflowStep");
+        com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.keys().forEach(MDC::remove);
+        MDC.remove("workflowId"); MDC.remove("workflow"); MDC.remove("workflowStep");
     }
 }

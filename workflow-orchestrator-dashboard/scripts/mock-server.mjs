@@ -755,7 +755,8 @@ const server = http.createServer(async (req, res) => {
     const wf = mockWorkflows.find(w => w.workflowId === wfId || w.id === wfId);
     return sendJson(res, 200, {
       workflowId: wfId,
-      values: wf?.metadata || { source: 'mock-engine', cluster: 'local-dev', environment: 'production-simulation' }
+      values: { ...(wf?.metadata || {}), requestId: `req-${metaMatch[1]}`, correlationId: `corr-${metaMatch[1]}`, transactionId: `txn-${metaMatch[1]}`, traceId: '0123456789abcdef0123456789abcdef' },
+      identifiers: { requestId: `req-${metaMatch[1]}`, correlationId: `corr-${metaMatch[1]}`, transactionId: `txn-${metaMatch[1]}`, traceId: '0123456789abcdef0123456789abcdef' }
     });
   }
 

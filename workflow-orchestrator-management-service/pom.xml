@@ -15,6 +15,7 @@
     <properties><maven.deploy.skip>true</maven.deploy.skip></properties>
 
     <dependencies>
+        <dependency><groupId>io.github.hatimcherkaoui</groupId><artifactId>workflow-orchestrator-observability-starter</artifactId></dependency>
         <dependency>
             <groupId>io.github.hatimcherkaoui</groupId>
             <artifactId>workflow-orchestrator-service-starter</artifactId>

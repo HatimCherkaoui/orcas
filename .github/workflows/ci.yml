@@ -21,13 +21,19 @@ jobs:
           cache-dependency-path: workflow-orchestrator-dashboard/package-lock.json
       - name: Verify all Maven modules and Testcontainers scenarios
         run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Verify Collector, Elasticsearch and Kibana contracts
+        run: >-
+          mvn --batch-mode --no-transfer-progress
+          -pl workflow-orchestrator-observability-autoconfigure -am
+          -Pobservability-stack -Dtest=ObservabilityStackIntegrationTest
+          -Dsurefire.failIfNoSpecifiedTests=false test
       - name: Check module boundaries
         run: |
           python3 scripts/check-module-boundaries.py
           python3 scripts/verify-unified-starter.py
       - name: Build dashboard
         working-directory: workflow-orchestrator-dashboard
-        run: npm ci && npm run build
+        run: npm ci && npm test && npm run build
       - name: Validate library publication artifacts without signing or uploading
         run: mvn --batch-mode --no-transfer-progress -Drelease -Dgpg.skip=true -DskipTests package
       - name: Package first POC

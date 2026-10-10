@@ -41,6 +41,8 @@ public final class WorkflowContextHolder {
         return CURRENT.get();
     }
 
+    public static void restore(Execution execution) { if (execution == null) CURRENT.remove(); else CURRENT.set(execution); }
+
     public static void clear() {
         CURRENT.remove();
     }

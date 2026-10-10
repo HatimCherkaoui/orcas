@@ -68,6 +68,9 @@ services:
       kafka:
         condition: service_healthy
     environment:
+      OTEL_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+      OTEL_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       SERVER_PORT: 8081
       SPRING_APPLICATION_NAME: workflow-orchestrator-management-service
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orchestrator
@@ -103,6 +106,9 @@ services:
       kafka:
         condition: service_healthy
     environment:
+      OTEL_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+      OTEL_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
       SERVER_PORT: 8080
       SPRING_APPLICATION_NAME: workflow-example-app
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orchestrator
@@ -129,6 +135,8 @@ services:
     build:
       context: ./workflow-orchestrator-dashboard
       dockerfile: Dockerfile
+      args:
+        VITE_KIBANA_URL: ${KIBANA_PUBLIC_URL:-http://localhost:5601}
     container_name: workflow-dashboard
     profiles: [ dev, prod ]
     restart: unless-stopped
@@ -160,14 +168,14 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=adminpassword
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: [ "CMD-SHELL", "curl -u elastic:adminpassword -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
+      test: [ "CMD-SHELL", "curl -u elastic:$$ELASTIC_PASSWORD -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -182,16 +190,11 @@ services:
       elasticsearch:
         condition: service_healthy
     networks: [ workflow-net ]
-    command: >
-      bash -c "
-        until curl -s -u elastic:adminpassword -X POST http://elasticsearch:9200/_security/user/kibana_system/_password -H 'Content-Type: application/json' -d '{\"password\":\"adminpassword\"}' | grep -q '{}'; do
-          echo 'Waiting to set kibana_system password...'
-          sleep 3
-        done;
-        echo 'Creating OTel Data Stream Template...'
-        curl -s -u elastic:adminpassword -X PUT http://elasticsearch:9200/_index_template/otel_data_streams -H 'Content-Type: application/json' -d '{\"index_patterns\":[\"traces-*\",\"logs-*\",\"metrics-*\"],\"data_stream\":{}}'
-        echo 'es-setup completed successfully.'
-      "
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
+    volumes:
+      - ./observability:/observability:ro
+    entrypoint: ["/bin/bash", "/observability/setup-elasticsearch.sh"]
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.15.0
@@ -203,7 +206,7 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=adminpassword
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
       - XPACK_FLEET_ISOUTOFTHEBOXENABLED=false
     depends_on:
       es-setup:
@@ -224,62 +227,27 @@ services:
       kibana:
         condition: service_healthy
     networks: [ workflow-net ]
-    entrypoint: [ "/bin/bash", "-c" ]
-    command:
-      - |
-        echo "--> 1. Creating Data Views in Default Space..."
-        curl -s -X POST "http://kibana:5601/api/data_views/data_view" \
-          -u elastic:adminpassword \
-          -H "kbn-xsrf: true" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "data_view": {
-              "title": "traces-*,logs-*,metrics-*",
-              "name": "orchestrator",
-              "timeFieldName": "@timestamp"
-            }
-          }'
-
-        echo "--> 2. Creating Custom Space: Spring Boot Example App..."
-        curl -s -X POST "http://kibana:5601/api/spaces/space" \
-          -u elastic:adminpassword \
-          -H "kbn-xsrf: true" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "id": "springboot-example-app",
-            "name": "Spring Boot Example App",
-            "description": "Observability space for OTLP traces, logs, and metrics",
-            "color": "#00BFB3"
-          }'
-
-        echo "--> 3. Creating Data Views in custom Space..."
-        curl -s -X POST "http://kibana:5601/s/springboot-example-app/api/data_views/data_view" \
-          -u elastic:adminpassword \
-          -H "kbn-xsrf: true" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "data_view": {
-              "title": "traces-*,logs-*,metrics-*",
-              "name": "orchestrator",
-              "timeFieldName": "@timestamp"
-            }
-          }'
-
-        echo "--> Kibana auto-configuration completed!"
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
+    volumes:
+      - ./observability:/observability:ro
+    entrypoint: ["/bin/bash", "/observability/setup-kibana.sh"]
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.123.0
     container_name: workflow-otel-collector
     profiles: [ prod ]
     restart: unless-stopped
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "4317:4317"
       - "4318:4318"
     depends_on:
-      elasticsearch:
-        condition: service_healthy
+      es-setup:
+        condition: service_completed_successfully
     networks: [ workflow-net ]
 
 volumes:

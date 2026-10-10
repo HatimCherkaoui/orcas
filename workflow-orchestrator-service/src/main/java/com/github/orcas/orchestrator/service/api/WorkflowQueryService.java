@@ -107,9 +107,13 @@ public interface WorkflowQueryService {
 
     /** The technical metadata key/value map captured for a workflow instance. */
     record MetadataView(String workflowId, String metadataClassName, Map<String, String> values,
-                        Instant dateCreated, Instant dateUpdated) {
+                        Instant dateCreated, Instant dateUpdated, Map<String,String> identifiers) {
+        public MetadataView(String workflowId,String metadataClassName,Map<String,String> values,Instant dateCreated,Instant dateUpdated) {
+            this(workflowId,metadataClassName,values,dateCreated,dateUpdated,new com.github.orcas.orchestrator.core.model.Metadata(values).identifiers());
+        }
         public MetadataView {
             values = values == null ? Map.of() : Map.copyOf(values);
+            identifiers = identifiers == null ? Map.of() : Map.copyOf(identifiers);
         }
     }
 

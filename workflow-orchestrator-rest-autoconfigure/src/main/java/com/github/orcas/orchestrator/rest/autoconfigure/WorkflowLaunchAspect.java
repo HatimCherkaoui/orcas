@@ -24,13 +24,19 @@ public final class WorkflowLaunchAspect {
     private final WorkflowEngine engine;
     public WorkflowLaunchAspect(WorkflowEngine engine) { this.engine = engine; }
 
+    private WorkflowContext launchContext(Object body, HttpHeaders headers) {
+        var current = com.github.orcas.orchestrator.core.model.WorkflowContextHolder.current();
+        return current == null ? WorkflowContext.of(body, headers.toSingleValueMap()) : current.withBusinessInput(body);
+    }
+
     @Around("@annotation(launch)")
     public Object launch(ProceedingJoinPoint joinPoint, LaunchWorkflow launch) throws Throwable {
         Object body = null;
+        WorkflowContext supplied = null;
         var headers = new HttpHeaders();
         for (Object argument : joinPoint.getArgs()) {
             if (argument instanceof HttpHeaders httpHeaders) headers.putAll(httpHeaders);
-            else if (argument instanceof WorkflowContext workflowContext) body = workflowContext.businessInput();
+            else if (argument instanceof WorkflowContext workflowContext) { body = workflowContext.businessInput(); supplied = workflowContext; }
             else if (body == null && !(argument instanceof org.springframework.validation.BindingResult)) body = argument;
         }
         var attributes = RequestContextHolder.getRequestAttributes();
@@ -46,7 +52,7 @@ public final class WorkflowLaunchAspect {
             // distinguish that from a workflow that is merely queued.
             engine.startAsync(
                     workflow,
-                    WorkflowContext.of(body, headers.toSingleValueMap()))
+                    supplied == null ? launchContext(body, headers) : supplied)
                     .join();
         } catch (java.util.concurrent.CompletionException error) {
             log.log(Level.SEVERE, "Failed to start workflow '" + workflow + "'", error.getCause());

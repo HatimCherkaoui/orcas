@@ -5,31 +5,48 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
 processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  cumulativetodelta:
   batch:
     timeout: 1s
     send_batch_size: 256
-
+    send_batch_max_size: 512
 exporters:
   elasticsearch:
     endpoints: ["http://elasticsearch:9200"]
     user: "elastic"
-    password: "adminpassword"
+    password: "${env:ELASTIC_PASSWORD}"
+    pipeline: orcas-correlation
+    traces_index: traces-orcas-default
+    logs_index: logs-orcas-default
+    metrics_index: metrics-orcas-default
     mapping:
-      mode: otel
-
+      mode: ecs
+    num_workers: 2
+    flush:
+      interval: 1s
+    retry:
+      enabled: true
+      max_retries: 5
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [elasticsearch]
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, cumulativetodelta, batch]
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [elasticsearch]

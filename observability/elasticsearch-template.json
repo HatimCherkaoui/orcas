@@ -1,0 +1,98 @@
+{
+  "index_patterns": [
+    "traces-orcas-*",
+    "logs-orcas-*",
+    "metrics-orcas-*"
+  ],
+  "priority": 500,
+  "data_stream": {},
+  "template": {
+    "settings": {
+      "index.default_pipeline": "orcas-correlation",
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "identifier_extensions": {
+            "match": "*Id",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        {
+          "strings": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 512
+            }
+          }
+        },
+        {
+          "histograms": {
+            "match_mapping_type": "object",
+            "match": "*.duration",
+            "mapping": {
+              "type": "histogram"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "requestId": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "correlationId": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "transactionId": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "traceId": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "workflowId": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "workflow": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "workflowStep": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "eventType": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "relatedEventType": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "outcome": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "serviceName": {
+          "type": "keyword",
+          "ignore_above": 256
+        },
+        "@timestamp": {
+          "type": "date_nanos"
+        },
+        "durationMs": {
+          "type": "double"
+        }
+      }
+    }
+  }
+}

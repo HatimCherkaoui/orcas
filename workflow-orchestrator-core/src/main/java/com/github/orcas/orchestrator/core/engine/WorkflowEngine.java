@@ -88,8 +88,17 @@ public final class WorkflowEngine {
 
     /** Starts a new workflow instance and publishes its initial event. */
     public void start(String workflow, WorkflowContext context) {
-        requireDefinition(workflow);
         String id = StatusEvent.newPipelineId();
+        context.metadata().put("workflowId",id);
+        try (var operation = observer.telemetry().begin("Workflow", "workflow.start", context.metadata(), java.util.Map.of("workflow", workflow,"workflowId",id))) {
+            com.github.orcas.orchestrator.core.model.WorkflowContextHolder.with(
+                    new com.github.orcas.orchestrator.core.model.WorkflowContextHolder.Execution(id,workflow,context,null),
+                    () -> { startObserved(id,workflow,context); return null; });
+        }
+    }
+
+    private void startObserved(String id, String workflow, WorkflowContext context) {
+        requireDefinition(workflow);
         observer.onStart(id, workflow);
         store.start(id, workflow, context);
         publish(StatusEvent.of(
@@ -114,17 +123,30 @@ public final class WorkflowEngine {
         var definition = requireDefinition(workflow);
         var step = definition.findStep(stepName)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown step: " + stepName));
-        stepExecutor.execute(StatusEvent.of(
-                workflowId,
-                workflow,
-                stepName,
-                Status.SUSPENDED,
-                context.metadata().asMap(),
-                "manual replay"), step);
+        try (var operation = observer.telemetry().begin("Workflow","workflow.replay",context.metadata(),
+                java.util.Map.of("workflowId",workflowId,"workflow",workflow,"workflowStep",stepName))) {
+            com.github.orcas.orchestrator.core.model.WorkflowContextHolder.with(
+                    new com.github.orcas.orchestrator.core.model.WorkflowContextHolder.Execution(workflowId,workflow,context,null),
+                    () -> { stepExecutor.execute(StatusEvent.of(workflowId,workflow,stepName,Status.SUSPENDED,context.metadata().asMap(),"manual replay"),step); return null; });
+        }
     }
 
     /** Consumes one event and dispatches all matching route steps. */
     public void handle(StatusEvent event) {
+        var context = store.context(event.workflowId());
+        var values = new java.util.LinkedHashMap<>(event.metadata());
+        values.putAll(context.metadata().identifiers());
+        var correlated = new StatusEvent(event.workflowId(),event.workflow(),event.step(),event.status(),values,event.message(),event.timestamp(),event.failure());
+        try (var operation = observer.telemetry().begin("Workflow", "workflow.event", context.metadata(),
+                java.util.Map.of("workflowId", event.workflowId(), "workflow", event.workflow(), "workflowStep", event.step(), "status", event.status().name()))) {
+            try { com.github.orcas.orchestrator.core.model.WorkflowContextHolder.with(
+                    new com.github.orcas.orchestrator.core.model.WorkflowContextHolder.Execution(event.workflowId(),event.workflow(),context,null),
+                    () -> { handleObserved(correlated); return null; }); }
+            catch (RuntimeException error) { operation.error(error); throw error; }
+        }
+    }
+
+    private void handleObserved(StatusEvent event) {
         var definition = requireDefinition(event.workflow());
         var incomingStep = definition.findStep(event.step());
         observer.onEvent(event);
@@ -133,7 +155,16 @@ public final class WorkflowEngine {
         boolean joinRelated = joins.isRelated(event);
         joins.accept(event, stepExecutor::execute);
 
-        var routes = definition.matching(event);
+        var routes = new java.util.ArrayList<WorkflowDefinition.Route>();
+        for (var route : definition.routes()) {
+            try (var criteria = observer.telemetry().begin("Criteria", "workflow.criteria", store.context(event.workflowId()).metadata(),
+                    java.util.Map.of("workflowId",event.workflowId(),"workflow",event.workflow(),"workflowStep",event.step(),
+                            "criteria.expectedStep",route.criteria().expectedStep(),"criteria.expectedStatus",route.criteria().expectedStatus().name()))) {
+                boolean matched = route.criteria().matches(event);
+                criteria.attribute("criteria.matched",Boolean.toString(matched));
+                if (matched) routes.add(route);
+            }
+        }
         if (routes.isEmpty() && definition.waitingFor(event) && isTerminal(event)) {
             throw new WorkflowCriteriaNotMatchedException(event);
         }

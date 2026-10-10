@@ -15,6 +15,9 @@ import java.util.logging.Logger;
  * (guaranteeing per-instance ordering within a partition).
  */
 public final class KafkaWorkflowEventPublisher implements WorkflowEventPublisher {
+    private com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry = com.github.orcas.orchestrator.core.engine.WorkflowTelemetry.noop();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setTelemetry(com.github.orcas.orchestrator.core.engine.WorkflowTelemetry telemetry) { this.telemetry = telemetry; }
     private static final Logger log = Logger.getLogger(KafkaWorkflowEventPublisher.class.getName());
 
     private final KafkaTemplate<String, String> kafka;
@@ -38,22 +41,34 @@ public final class KafkaWorkflowEventPublisher implements WorkflowEventPublisher
     }
 
     public void publish(StatusEvent event) {
+        var metadata = KafkaCorrelation.metadata(event.metadata(), null);
+        var operation = telemetry.begin("kafkaEvent", "kafka.publish", metadata,
+                java.util.Map.of("workflowId",event.workflowId(),"workflow",event.workflow(),"workflowStep",event.step(),"messaging.destination.name",topic));
         try {
             log.fine("Publishing status event step='" + event.step() + "' status=" + event.status() + " to topic '" + topic + "'");
-            var send = kafka.send(topic, event.workflowId(), mapper.writeValueAsString(event));
+            var enriched = new StatusEvent(event.workflowId(),event.workflow(),event.step(),event.status(),metadata.asMap(),event.message(),event.timestamp(),event.failure());
+            var headers = operation.propagation();
+            if (headers.isEmpty()) headers = com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.headers(metadata);
+            var send = kafka.send(KafkaCorrelation.record(topic, event.workflowId(), mapper.writeValueAsString(enriched), headers));
             if (waitForAcknowledgement) {
                 send.get(10, TimeUnit.SECONDS);
             } else {
+                operation.detach();
                 send.whenComplete((result, error) -> {
                     if (error != null) {
+                        operation.error(error);
                         log.severe("Kafka failed to acknowledge workflow event for instance "
                                 + event.workflowId() + " step '" + event.step() + "': " + error.getMessage());
                     }
+                    operation.close();
                 });
             }
         } catch (Exception e) {
+            operation.error(e); operation.close();
             log.severe("Failed to publish status event for workflow instance " + event.workflowId() + " step '" + event.step() + "': " + e.getMessage());
             throw new IllegalStateException("Unable to publish workflow event", e);
+        } finally {
+            if (waitForAcknowledgement) operation.close();
         }
     }
 }

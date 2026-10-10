@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { X, ShieldCheck, Layers, GitBranch, RotateCcw, Copy, Check } from 'lucide-react';
 import { Loading, ErrorState, Empty } from '../common/States';
+import { ExecutionIdentifiers } from '../common/ExecutionIdentifiers';
 import { JsonViewer } from '../common/Inputs';
 
 /** Copy button with momentary flash */
@@ -60,7 +61,11 @@ export function WorkflowInfoPanel({ tabId, title, subtitle, load, onClose }) {
         ) : (
           <>
             <SectionHeader label={title} value={load.data} />
-            <JsonViewer value={load.data} />
+            {tabId === 'metadata' ? <>
+              <ExecutionIdentifiers identifiers={load.identifiers || Object.fromEntries(Object.entries(load.data).filter(([key]) => /^(requestId|correlationId|transactionId|traceId|workflowId|traceparent|tracestate)$/.test(key)))} />
+              {Object.keys(load.data).some(key => !(key in (load.identifiers || {})) && !/^(requestId|correlationId|transactionId|traceId|workflowId|traceparent|tracestate)$/.test(key)) &&
+                <JsonViewer value={Object.fromEntries(Object.entries(load.data).filter(([key]) => !(key in (load.identifiers || {})) && !/^(requestId|correlationId|transactionId|traceId|workflowId|traceparent|tracestate)$/.test(key)))} />}
+            </> : <JsonViewer value={load.data} />}
           </>
         )}
       </div>

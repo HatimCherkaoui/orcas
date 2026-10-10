@@ -26,7 +26,7 @@ public record StatusEvent(
         workflow = requireText(workflow, "workflow");
         step = requireText(step, "step");
         Objects.requireNonNull(status, "status");
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+        metadata = CorrelationIdentifiers.ensure(new Metadata(metadata)).asMap();
         timestamp = timestamp == null ? Instant.now() : timestamp;
     }
 

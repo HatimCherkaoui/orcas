@@ -87,7 +87,12 @@ public final class JdbcWorkflowAdminService implements WorkflowAdminService {
 
     @Override
     public void replaceMetadata(String workflowId, Map<String, String> metadata) {
-        String json = serializer.write(metadata);
+        var stored = jdbc.query("select metadata_json from workflow_metadata where pipeline_id=:id",
+                new MapSqlParameterSource("id",workflowId),rs -> rs.next() ? serializer.readMap(rs.getString(1)) : Map.<String,String>of());
+        var updated = new com.github.orcas.orchestrator.core.model.Metadata(metadata);
+        new com.github.orcas.orchestrator.core.model.Metadata(stored).identifiers().forEach(updated::put);
+        com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.ensure(updated);
+        String json = serializer.write(updated.asMap());
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         requireUpdated(jdbc.update("""
                 update workflow_metadata set metadata_json=:json,date_updated=cast(:now as timestamptz) where pipeline_id=:id

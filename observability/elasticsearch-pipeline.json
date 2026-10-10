@@ -1,0 +1,11 @@
+{
+  "description": "Normalize execution identifiers and event types across OTLP signals",
+  "processors": [
+    {
+      "script": {
+        "lang": "painless",
+        "source": "def attrs = ctx.containsKey('Attributes') ? ctx.Attributes : (ctx.containsKey('attributes') ? ctx.attributes : [:]);\nfor (def key : ['requestId','correlationId','transactionId','traceId','workflowId','workflow','workflowStep','eventType','outcome','durationMs']) {\n  if (attrs.containsKey(key)) ctx[key] = attrs[key];\n}\nfor (def entry : attrs.entrySet()) { if (entry.getKey().endsWith('Id')) ctx[entry.getKey()] = entry.getValue(); }\ndef identifierKeys = attrs.containsKey('identifierKeys') ? attrs.identifierKeys : (ctx.containsKey('identifierKeys') ? ctx.identifierKeys : []);\nif (identifierKeys instanceof String) identifierKeys = identifierKeys.splitOnToken(',');\nfor (def key : identifierKeys) { if (attrs.containsKey(key)) ctx[key] = attrs[key]; }\nif (ctx.containsKey('TraceId')) ctx.traceId = ctx.TraceId;\nif (ctx.containsKey('trace') && ctx.trace instanceof Map && ctx.trace.containsKey('id')) ctx.traceId = ctx.trace.id;\nif (ctx.containsKey('Resource')) {\n  def r = ctx.Resource;\n  if (r.containsKey('service.name')) ctx.serviceName = r['service.name'];\n  else if (r.containsKey('service') && r.service instanceof Map) ctx.serviceName = r.service.name;\n}\nif (ctx.containsKey('service') && ctx.service instanceof Map && ctx.service.containsKey('name')) ctx.serviceName = ctx.service.name;\nif (!ctx.containsKey('serviceName')) ctx.serviceName = 'unknown';\nif (ctx.containsKey('Duration') && !ctx.containsKey('durationMs')) ctx.durationMs = ctx.Duration / 1000.0;\nif (!ctx.containsKey('outcome') && ctx.containsKey('TraceStatus')) ctx.outcome = ctx.TraceStatus == 2 ? 'failure' : 'success';\nif (ctx['_index'].startsWith('logs-')) {\n  if (ctx.containsKey('eventType')) ctx.relatedEventType = ctx.eventType;\n  ctx.eventType = 'Log';\n} else if (!ctx.containsKey('eventType')) ctx.eventType = ctx['_index'].startsWith('metrics-') ? 'Metric' : 'Workflow';\n"
+      }
+    }
+  ]
+}

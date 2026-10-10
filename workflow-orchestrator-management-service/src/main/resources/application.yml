@@ -2,6 +2,8 @@ spring:
   application:
     name: workflow-orchestrator-management-service
   kafka:
+    template:
+      observation-enabled: true
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -17,6 +19,9 @@ spring:
     password: ${DB_PASSWORD:orchestrator}
 workflow:
   orchestrator:
+    observability:
+      metrics-export: ${OTEL_METRICS_ENABLED:true}
+      metrics-endpoint: ${OTEL_METRICS_ENDPOINT:http://localhost:4318/v1/metrics}
     service:
       enabled: true
       base-path: /api/orchestrator
@@ -39,6 +44,15 @@ server:
   port: 8081
 
 management:
+  otlp:
+    metrics:
+      export:
+        url: ${OTEL_METRICS_ENDPOINT:http://localhost:4318/v1/metrics}
+        step: 30s
+        aggregation-temporality: delta
+        resource-attributes:
+          service.name: ${spring.application.name}
+        enabled: ${OTEL_METRICS_ENABLED:true}
   endpoints:
     web:
       exposure:
@@ -47,3 +61,16 @@ management:
     health:
       probes:
         enabled: true
+
+  tracing:
+    sampling:
+      probability: ${OTEL_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTEL_LOGS_ENDPOINT:http://localhost:4318/v1/logs}

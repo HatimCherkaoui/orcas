@@ -4,6 +4,14 @@
 
 This development POC reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
 
+### Execution correlation and observability
+
+- Generate and propagate request, correlation, transaction and trace IDs across HTTP, Kafka and workflow execution, while capturing only allowlisted transport metadata.
+- Expose extensible identifier APIs and individual dashboard copy actions, and retain execution identity through context replacement and operator metadata updates.
+- Trace workflows, steps, criteria, REST, Kafka and pooled JDBC operations; restore MDC and trace scopes across asynchronous boundaries.
+- Index normalized correlation fields and event categories in Elasticsearch, and provision a Kibana quality-of-service dashboard and saved execution search.
+- Export bounded operation metrics, CPU/JVM/pool telemetry and delta histograms; validate the Collector/Elasticsearch/Kibana path with isolated Testcontainers.
+
 ### Architecture
 
 - `workflow-orchestrator-core` contains the engine, workflow model, routing DSL, state contracts and extension interfaces.

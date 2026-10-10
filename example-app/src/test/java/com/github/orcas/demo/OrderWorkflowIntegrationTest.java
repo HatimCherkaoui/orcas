@@ -108,6 +108,7 @@ class OrderWorkflowIntegrationTest {
         registry.add("spring.kafka.producer.key-serializer", () -> "org.apache.kafka.common.serialization.StringSerializer");
         registry.add("spring.kafka.producer.value-serializer", () -> "org.apache.kafka.common.serialization.StringSerializer");
         registry.add("management.otlp.metrics.export.enabled", () -> "false");
+        registry.add("workflow.orchestrator.observability.metrics-export", () -> "false");
         registry.add("demo.payment.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
         registry.add("demo.notification.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
         registry.add("demo.inventory.base-url", OrderWorkflowIntegrationTest::wiremockUrl);
@@ -207,6 +208,10 @@ class OrderWorkflowIntegrationTest {
                 }
                 """.formatted(customer.getId())).statusCode(202);
         await(() -> jdbcTemplate.queryForObject("select count(*) from workflow", Integer.class) > 0);
+        // The controller responds before Kafka finishes the workflow; do not let
+        // the next test delete customers while this execution creates its order.
+        await(() -> jdbcTemplate.queryForObject(
+                "select count(*) from workflow where status not in ('SUCCESS','FAILED')", Integer.class) == 0);
     }
 
     @Test
@@ -580,6 +585,35 @@ class OrderWorkflowIntegrationTest {
         return """
                 {"customerId":%d,"items":[{"sku":"%s","quantity":1,"unitPrice":12345.01}]}
                 """.formatted(customer.getId(), sku);
+    }
+
+    @Test
+    void carriesIdentifiersAcrossHttpKafkaStepsAndOutboundRest() {
+        Customer customer = customer(); stock("CORRELATION-SKU",10);
+        String correlation = "integration-correlation-42";
+        String trace = "0123456789abcdef0123456789abcdef";
+        given().port(port).contentType(ContentType.JSON)
+                .header("X-Request-ID","integration-request-42")
+                .header("X-Correlation-ID",correlation)
+                .header("X-Transaction-ID","integration-transaction-42")
+                .header("traceparent","00-"+trace+"-0123456789abcdef-01")
+                .header("Authorization","Bearer not-to-be-persisted")
+                .body(orderBody(customer,"CORRELATION-SKU","25.00"))
+                .post("/orders").then().statusCode(202)
+                .header("x-request-id","integration-request-42");
+        awaitOrder(order -> order.getStatus() == OrderStatus.PENDING_PAYMENT);
+        await(() -> jdbcTemplate.queryForObject("select count(*) from workflow_metadata where metadata_json::jsonb->>'correlationId'=?",Integer.class,correlation)>0);
+        String id = jdbcTemplate.queryForObject("select pipeline_id from workflow_metadata where metadata_json::jsonb->>'correlationId'=?",String.class,correlation);
+        await(() -> "SUCCESS".equals(jdbcTemplate.queryForObject(
+                "select status from workflow where pipeline_id=?", String.class, id)));
+        String metadata = jdbcTemplate.queryForObject("select metadata_json from workflow_metadata where pipeline_id=?",String.class,id);
+        assertThat(metadata).contains("integration-request-42","integration-transaction-42",trace).doesNotContain("Authorization","not-to-be-persisted");
+        var view = given().port(port).get("/api/orchestrator/workflows/"+id+"/metadata").then().statusCode(200).extract().jsonPath();
+        assertThat(view.getString("identifiers.correlationId")).isEqualTo(correlation);
+        String requests = given().get(wireMockUrl("/__admin/requests")).then().statusCode(200).extract().asString();
+        assertThat(requests).contains("integration-request-42","integration-transaction-42",correlation,trace);
+        var snapshots = jdbcTemplate.queryForList("select snapshot_json from workflow_metadata_log where pipeline_id=?",String.class,id);
+        assertThat(snapshots).isNotEmpty().allSatisfy(snapshot -> assertThat(snapshot).contains(correlation,"integration-transaction-42",trace));
     }
 
     private String orderBody(Customer customer, String sku, String unitPrice) {

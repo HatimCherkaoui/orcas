@@ -35,9 +35,8 @@ class WorkflowMdcObserverTest {
 
         observer.onStepStart(context, step);
 
-        assertThat(MDC.get("workflowId")).isEqualTo("wf-1");
-        assertThat(MDC.get("workflow")).isEqualTo("orders");
-        assertThat(MDC.get("workflowStep")).isEqualTo("reserve");
+        // Lifecycle callbacks must not leak MDC into pooled or asynchronous threads.
+        assertThat(MDC.get("workflowId")).isNull();
 
         observer.onStepEnd(context, step, event);
 

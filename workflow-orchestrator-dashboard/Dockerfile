@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
+ARG VITE_KIBANA_URL=http://localhost:5601
+ENV VITE_KIBANA_URL=$VITE_KIBANA_URL
 RUN npm run build
 
 FROM nginx:1.29-alpine

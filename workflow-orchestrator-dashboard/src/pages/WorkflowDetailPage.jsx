@@ -9,6 +9,7 @@ import { AutoRefresh } from '../components/common/Inputs';
 import { WorkflowGraph } from '../components/graph/WorkflowGraph';
 import { StepDetailsPanel } from '../components/graph/StepDetailsPanel';
 import { WorkflowInfoPanel } from '../components/graph/WorkflowInfoPanel';
+import { ExecutionIdentifiers } from '../components/common/ExecutionIdentifiers';
 import { Shell } from '../components/layout/Shell';
 
 const INFO_TABS = [
@@ -39,7 +40,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
   const infoLoads = useMemo(
     () => ({
       context: { ...context, data: context.data?.context },
-      metadata: { ...metadata, data: metadata.data?.values },
+      metadata: { ...metadata, data: metadata.data?.values, identifiers: metadata.data?.identifiers },
       logs: auditLog,
       config: {
         loading: definition.loading,
@@ -117,6 +118,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
         </div>
       </header>
 
+      <ExecutionIdentifiers compact identifiers={metadata.data?.identifiers || Object.fromEntries(Object.entries(metadata.data?.values || {}).filter(([key]) => /^(requestId|correlationId|transactionId|traceId)$/.test(key)))} workflowId={workflowId} />
       <div className="graph-stage">
         {(!workflow.data && workflow.loading) || (!steps.data && steps.loading) ? (
           <Loading />
