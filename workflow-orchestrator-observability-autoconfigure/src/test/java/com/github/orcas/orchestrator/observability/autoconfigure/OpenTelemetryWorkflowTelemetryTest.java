@@ -40,6 +40,20 @@ class OpenTelemetryWorkflowTelemetryTest {
             }));
         } finally { MDC.clear(); }
     }
+    @Test void completionDurationDoesNotCollideWithWorkflowNameInElasticsearch() {
+        var exporter = InMemorySpanExporter.create();
+        try (var tracer = SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(exporter)).build()) {
+            var telemetry = new OpenTelemetryWorkflowTelemetry(OpenTelemetrySdk.builder().setTracerProvider(tracer).build());
+            assertThat(telemetry.recordsCompletions()).isTrue();
+            telemetry.completed(CorrelationIdentifiers.fromHeaders(Map.of()), Map.of("workflow", "order-pipeline"), java.time.Duration.ofSeconds(5));
+            var span = exporter.getFinishedSpanItems().getFirst();
+            assertThat(span.getName()).isEqualTo("workflow.completed");
+            assertThat(span.getAttributes().get(io.opentelemetry.api.common.AttributeKey.stringKey("workflow"))).isEqualTo("order-pipeline");
+            assertThat(span.getAttributes().get(io.opentelemetry.api.common.AttributeKey.doubleKey("durationMs"))).isEqualTo(5000.);
+            // The Elasticsearch exporter expands dotted keys into objects.
+            assertThat(span.getAttributes().asMap().keySet()).noneMatch(key -> key.getKey().startsWith("workflow."));
+        }
+    }
     @Test void respectsDisabledMdcPropagation() {
         var telemetry = new OpenTelemetryWorkflowTelemetry(io.opentelemetry.api.OpenTelemetry.noop(),false);
         MDC.put("outside","keep");

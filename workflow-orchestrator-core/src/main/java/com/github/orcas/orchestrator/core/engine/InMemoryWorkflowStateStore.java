@@ -16,7 +16,7 @@ public final class InMemoryWorkflowStateStore implements WorkflowStateStore, Wor
     private final ConcurrentMap<String, WorkflowContext> contexts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workflows = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, StepContext> steps = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, List<StatusEvent>> events = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, java.util.Queue<StatusEvent>> events = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Integer> retries = new ConcurrentHashMap<>();
 
     @Override
@@ -28,7 +28,7 @@ public final class InMemoryWorkflowStateStore implements WorkflowStateStore, Wor
 
     @Override
     public void record(StatusEvent event, String stepTypeClassName) {
-        events.computeIfAbsent(event.workflowId(), ignored -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(event);
+        events.computeIfAbsent(event.workflowId(), ignored -> new java.util.concurrent.ConcurrentLinkedQueue<>()).add(event);
     }
 
     @Override

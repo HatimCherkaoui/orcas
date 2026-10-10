@@ -30,6 +30,32 @@ class WorkflowEngineTest {
     }
 
     @Test
+    void asyncRunningEventsDoNotFinishOrCountAsWorkflowCompletions() {
+        var registry = new WorkflowRegistry();
+        registry.register(new WorkflowDefinition("async", List.of()));
+        var store = new InMemoryWorkflowStateStore();
+        var context = WorkflowContext.of("input");
+        store.start("async-id", "async", context);
+        var completions = new java.util.concurrent.atomic.AtomicInteger();
+        var telemetry = new WorkflowTelemetry() {
+            @Override public boolean recordsCompletions() { return true; }
+            @Override public Operation begin(String type, String name, com.github.orcas.orchestrator.core.model.Metadata metadata, java.util.Map<String,String> attributes) {
+                if (name.equals("workflow.completed")) completions.incrementAndGet();
+                return () -> { };
+            }
+        };
+        var observer = new WorkflowObserver() {
+            @Override public WorkflowTelemetry telemetry() { return telemetry; }
+        };
+        var engine = new WorkflowEngine(registry, event -> { }, store, Runnable::run,
+                new com.github.orcas.orchestrator.core.error.DefaultWorkflowErrorCategorizer(), observer);
+        engine.handle(StatusEvent.of("async-id", "async", "leaf", Status.RUNNING_ASYNC, context.metadata().asMap(), "running"));
+        assertThat(completions.get()).isZero();
+        engine.handle(StatusEvent.of("async-id", "async", "leaf", Status.SUCCESS, context.metadata().asMap(), "done"));
+        assertThat(completions.get()).isEqualTo(1);
+    }
+
+    @Test
     void routesInitToFirstStepAndFirstStepToNextStep() {
         var validate = new ValidateStep();
         var reserve = new ReserveStep();

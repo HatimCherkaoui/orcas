@@ -6,7 +6,6 @@ import com.github.orcas.orchestrator.core.model.StatusEvent;
 import org.springframework.kafka.core.KafkaTemplate;
 import tools.jackson.databind.ObjectMapper;
 
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
@@ -51,7 +50,10 @@ public final class KafkaWorkflowEventPublisher implements WorkflowEventPublisher
             if (headers.isEmpty()) headers = com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.headers(metadata);
             var send = kafka.send(KafkaCorrelation.record(topic, event.workflowId(), mapper.writeValueAsString(enriched), headers));
             if (waitForAcknowledgement) {
-                send.get(10, TimeUnit.SECONDS);
+                // Kafka's delivery.timeout.ms bounds the definitive producer result.
+                // A separate shorter timer can report failure for an event that
+                // Kafka is still retrying and subsequently delivers successfully.
+                send.get();
             } else {
                 operation.detach();
                 send.whenComplete((result, error) -> {
@@ -64,6 +66,7 @@ public final class KafkaWorkflowEventPublisher implements WorkflowEventPublisher
                 });
             }
         } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             operation.error(e); operation.close();
             log.severe("Failed to publish status event for workflow instance " + event.workflowId() + " step '" + event.step() + "': " + e.getMessage());
             throw new IllegalStateException("Unable to publish workflow event", e);

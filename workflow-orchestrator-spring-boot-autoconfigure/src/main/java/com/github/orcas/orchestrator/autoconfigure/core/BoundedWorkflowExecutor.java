@@ -11,6 +11,7 @@ import java.util.concurrent.Semaphore;
 final class BoundedWorkflowExecutor implements Executor, AutoCloseable {
     private final ExecutorService delegate;
     private final Semaphore permits;
+    private final ThreadLocal<Boolean> worker = new ThreadLocal<>();
 
     BoundedWorkflowExecutor(boolean virtualThreads, int concurrency) {
         if (concurrency < 1) throw new IllegalArgumentException("Workflow concurrency must be at least 1");
@@ -23,6 +24,13 @@ final class BoundedWorkflowExecutor implements Executor, AutoCloseable {
     @Override
     public void execute(Runnable task) {
         Objects.requireNonNull(task, "task");
+        // CompletableFuture completion callbacks can submit to this executor
+        // before their parent task releases its permit. Run nested submissions
+        // on that same worker so a saturated pool cannot wait on itself.
+        if (Boolean.TRUE.equals(worker.get())) {
+            task.run();
+            return;
+        }
         try {
             permits.acquire();
         } catch (InterruptedException interrupted) {
@@ -32,9 +40,11 @@ final class BoundedWorkflowExecutor implements Executor, AutoCloseable {
 
         try {
             delegate.execute(() -> {
+                worker.set(true);
                 try {
                     task.run();
                 } finally {
+                    worker.remove();
                     permits.release();
                 }
             });

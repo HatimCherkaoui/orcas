@@ -9,7 +9,12 @@ public class WorkflowKafkaProperties {
     private String topic = "workflow.status";
     private String replayTopic = "workflow.replay";
     private String consumerGroup = "workflow-orchestrator";
-    private int concurrency = 4;
+    private int concurrency = 2;
+    private int replayConcurrency = 1;
+    private int maxPollRecords = 25;
+    private int fetchMaxBytes = 4 * 1024 * 1024;
+    private int maxPartitionFetchBytes = 1024 * 1024;
+    private boolean consumersEnabled = true;
     private int topicPartitions = 12;
     private short topicReplicationFactor = 1;
     private boolean waitForAcknowledgement = true;
@@ -26,7 +31,21 @@ public class WorkflowKafkaProperties {
     public String getConsumerGroup() { return consumerGroup; }
     public void setConsumerGroup(String value) { consumerGroup = value; }
     public int getConcurrency() { return concurrency; }
-    public void setConcurrency(int value) { concurrency = value; }
+    public void setConcurrency(int value) { concurrency = positive(value, "concurrency"); }
+    public int getReplayConcurrency() { return replayConcurrency; }
+    public void setReplayConcurrency(int value) { replayConcurrency = positive(value, "replayConcurrency"); }
+    public int getMaxPollRecords() { return maxPollRecords; }
+    public void setMaxPollRecords(int value) { maxPollRecords = positive(value, "maxPollRecords"); }
+    public int getFetchMaxBytes() { return fetchMaxBytes; }
+    public void setFetchMaxBytes(int value) { fetchMaxBytes = positive(value, "fetchMaxBytes"); }
+    public int getMaxPartitionFetchBytes() { return maxPartitionFetchBytes; }
+    public void setMaxPartitionFetchBytes(int value) { maxPartitionFetchBytes = positive(value, "maxPartitionFetchBytes"); }
+    public boolean isConsumersEnabled() { return consumersEnabled; }
+    public void setConsumersEnabled(boolean value) { consumersEnabled = value; }
+    private static int positive(int value, String name) {
+        if (value < 1) throw new IllegalArgumentException(name + " must be positive");
+        return value;
+    }
     public int getTopicPartitions() { return topicPartitions; }
     public void setTopicPartitions(int value) { topicPartitions = value; }
     public short getTopicReplicationFactor() { return topicReplicationFactor; }

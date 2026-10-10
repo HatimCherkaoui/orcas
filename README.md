@@ -258,3 +258,94 @@ python3 scripts/compose-up.py prod
 
 Volumes and infrastructure services are retained. This is a local development
 workflow; schedule downtime appropriately when using it on a deployed instance.
+
+
+### Colima resource tuning
+
+The included Compose stack targets a small local VM. Kafka uses a 256 MiB heap,
+a 32 MiB cleaner deduplication buffer, two network threads and four I/O threads.
+The example runtime uses two status consumers and one replay consumer; management
+publishes replay commands but does not consume runtime topics. Existing topic
+partitions and consumer offsets are preserved. Producer acknowledgements and
+idempotence remain enabled.
+
+Workflow listener settings under `workflow.orchestrator.kafka`:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `concurrency` | 2 | Status consumers per application |
+| `replay-concurrency` | 1 | Independent replay consumers |
+| `max-poll-records` | 25 | Limit work between polls |
+| `fetch-max-bytes` | 4194304 | Fetch response target per consumer |
+| `max-partition-fetch-bytes` | 1048576 | Fetch target per partition |
+| `consumers-enabled` | true | Disable consumers in management-only deployments |
+| `observation-enabled` | false | Optional Spring Kafka observation in addition to Orcas spans |
+
+Fetch byte limits are targets: Kafka can return an oversized first batch to make
+progress. Size payloads and producer buffers accordingly. Small poll batches
+reduce the risk of long synchronous workflow steps exceeding the poll interval;
+configure `spring.kafka.consumer.properties.max.poll.interval.ms` for the maximum
+processing time of an entire poll batch, including downstream timeouts/retries.
+
+Compose overrides include `WORKFLOW_KAFKA_CONCURRENCY`, `WORKFLOW_ASYNC_CONCURRENCY`,
+`DB_POOL_MAX_SIZE`, `KAFKA_HEAP_OPTS`, `KAFKA_JVM_PERFORMANCE_OPTS`,
+`KAFKA_NETWORK_THREADS`, `KAFKA_IO_THREADS`, `KAFKA_RETENTION_HOURS`,
+`ORCAS_JAVA_TOOL_OPTIONS`, and `ES_JAVA_OPTS`. The local broker retention defaults
+to seven days; increase it for longer outage recovery windows. JVM processor counts
+are bounded to two to avoid excessive worker and garbage collector threads.
+WireMock keeps at most 1,000 journal entries. Application producer buffers use
+8 MiB and LZ4 compression. Database pools default to six connections for the
+Compose example and four for management.
+
+Use `--profile dev` when Elasticsearch and Kibana are unnecessary. The full
+`prod` demonstration also hosts both observability services; on a two CPU,
+4 GiB VM they compete with workflow execution. These settings reduce resource
+contention but do not provide production cluster redundancy or a throughput
+guarantee. Scale runtime consumers, pools and broker resources together after
+measuring latency and consumer lag on the target infrastructure.
+
+
+### Load testing the full Compose stack
+
+With `docker compose --profile prod up -d` healthy, run:
+
+```sh
+python3 scripts/compose-load.py --stages 50:10,200:25   --output /private/tmp/orcas-compose-prod-load.json
+```
+
+This creates an isolated inventory SKU and 250 orders using the seeded customer,
+then launches 250 payment-success callbacks. It leaves the
+orders and workflow history available for dashboard investigation. Unique request
+IDs and a shared correlation ID isolate each run from existing records. No tables,
+Kafka offsets or WireMock scenarios are reset.
+
+The script verifies successful persisted workflows, unique orders, payment records
+and confirmed business states. It reports HTTP and workflow duration mean/p50/p95/p99,
+throughput, and sampled container CPU/memory. `--timeout` sets the completion deadline
+per leg; HTTP requests have a 65-second timeout. Completion polling every three seconds
+makes elapsed throughput conservative. Results measure this Compose deployment and
+its mock services; they are not a cloud capacity estimate.
+
+With `--verify-traces`, the load test also requires exactly one successful native
+Elasticsearch completion per workflow and reports its end-to-end latency, including
+Kafka delivery to the terminal-event consumer. The database duration uses the
+terminal event timestamp; completion trace latency additionally includes final
+consumer processing. Set `ELASTIC_PASSWORD` for a customized Elasticsearch password.
+Nested executor submissions run on their current worker to preserve the concurrency
+bound without blocking on their own permits. `RUNNING_ASYNC` is an active state and
+does not produce workflow completion records.
+
+The local broker uses a JVM-free Kafka protocol health probe, a 30-second broker
+session lease and a 10-second controller request timeout. Relative CPU shares favor
+Kafka over analytics during contention. Publishers await Kafka’s definitive result,
+bounded by `delivery.timeout.ms=30000`, with request and buffer waits of 10 seconds.
+See the [Kafka broker configuration](https://kafka.apache.org/43/configuration/broker-configs/).
+
+The 10 October 2026 full-profile load run on Colima (2 CPUs, 4 GiB) completed
+500/500 workflows and confirmed 250 orders and payments, with zero final status
+consumer lag. At 25 concurrent clients, persisted workflow p95 duration was 28.2s
+for orders and 13.0s for callbacks. Full observability validation failed: the
+2,048-span OpenTelemetry queue overflowed, reporting 16,555 dropped spans; only
+315/500 completion traces reached Elasticsearch. Telemetry export capacity remains
+a known limitation of this constrained deployment. These results are a local burst
+measurement with WireMock, not a production capacity guarantee.

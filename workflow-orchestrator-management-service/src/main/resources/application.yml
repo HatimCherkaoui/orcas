@@ -3,11 +3,21 @@ spring:
     name: workflow-orchestrator-management-service
   kafka:
     template:
-      observation-enabled: true
+      observation-enabled: false
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        compression.type: lz4
+        linger.ms: 5
+        batch.size: 16384
+        buffer.memory: 8388608
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+        max.block.ms: 10000
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP_ID:workflow-management-service}
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -17,6 +27,10 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orchestrator}
     username: ${DB_USER:orchestrator}
     password: ${DB_PASSWORD:orchestrator}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:4}
+      minimum-idle: 1
+      connection-timeout: 5000
 workflow:
   orchestrator:
     observability:
@@ -34,6 +48,7 @@ workflow:
       schema-initialization: true
     kafka:
       enabled: true
+      consumers-enabled: false
       topic: workflow.status
       replay-topic: workflow.replay
       consumer-group: workflow-management-service

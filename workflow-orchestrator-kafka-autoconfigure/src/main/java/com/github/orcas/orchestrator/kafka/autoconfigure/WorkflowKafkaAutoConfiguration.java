@@ -72,7 +72,13 @@ public final class WorkflowKafkaAutoConfiguration {
             org.springframework.beans.factory.ObjectProvider<io.micrometer.observation.ObservationRegistry> observations) {
         var listener = new ConcurrentKafkaListenerContainerFactory<String, String>();
         listener.setConsumerFactory(factory);
-        listener.getContainerProperties().setObservationEnabled(true);
+        listener.getContainerProperties().setObservationEnabled(properties.isObservationEnabled());
+        // Scope memory limits to orchestrator listeners, leaving application consumers untouched.
+        var consumerSettings = new java.util.Properties();
+        consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_POLL_RECORDS_CONFIG, properties.getMaxPollRecords());
+        consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.FETCH_MAX_BYTES_CONFIG, properties.getFetchMaxBytes());
+        consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, properties.getMaxPartitionFetchBytes());
+        listener.getContainerProperties().setKafkaConsumerProperties(consumerSettings);
         listener.getContainerProperties().setObservationRegistry(observations.getIfAvailable(() -> io.micrometer.observation.ObservationRegistry.NOOP));
         listener.setConcurrency(properties.getConcurrency());
         listener.getContainerProperties().setMissingTopicsFatal(properties.isMissingTopicsFatal());

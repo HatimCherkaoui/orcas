@@ -16,8 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,7 +38,15 @@ public final class WorkflowRetryScheduler implements WorkflowRetryCoordinator, D
     private final WorkflowRetryStateStore stateStore;
     private final CircuitBreakerRegistry registry;
     private final WorkflowRetryProperties retryProperties;
-    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledThreadPoolExecutor executor = retryExecutor();
+
+    private static ScheduledThreadPoolExecutor retryExecutor() {
+        var scheduler = new ScheduledThreadPoolExecutor(1);
+        // Cancelled cooldowns must release captured workflow state immediately.
+        scheduler.setRemoveOnCancelPolicy(true);
+        scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return scheduler;
+    }
     private final ConcurrentMap<String, ScheduledFuture<?>> pendingHalfOpenBatches = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScheduledHalfOpenReplay> scheduledHalfOpenReplays = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ScheduledFuture<?>> pendingRetries = new ConcurrentHashMap<>();

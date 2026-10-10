@@ -141,12 +141,12 @@ public final class WorkflowEngine {
                 java.util.Map.of("workflowId", event.workflowId(), "workflow", event.workflow(), "workflowStep", event.step(), "status", event.status().name()))) {
             try { com.github.orcas.orchestrator.core.model.WorkflowContextHolder.with(
                     new com.github.orcas.orchestrator.core.model.WorkflowContextHolder.Execution(event.workflowId(),event.workflow(),context,null),
-                    () -> { handleObserved(correlated); return null; }); }
+                    () -> { handleObserved(correlated, context); return null; }); }
             catch (RuntimeException error) { operation.error(error); throw error; }
         }
     }
 
-    private void handleObserved(StatusEvent event) {
+    private void handleObserved(StatusEvent event, WorkflowContext context) {
         var definition = requireDefinition(event.workflow());
         var incomingStep = definition.findStep(event.step());
         observer.onEvent(event);
@@ -157,7 +157,7 @@ public final class WorkflowEngine {
 
         var routes = new java.util.ArrayList<WorkflowDefinition.Route>();
         for (var route : definition.routes()) {
-            try (var criteria = observer.telemetry().begin("Criteria", "workflow.criteria", store.context(event.workflowId()).metadata(),
+            try (var criteria = observer.telemetry().begin("Criteria", "workflow.criteria", context.metadata(),
                     java.util.Map.of("workflowId",event.workflowId(),"workflow",event.workflow(),"workflowStep",event.step(),
                             "criteria.expectedStep",route.criteria().expectedStep(),"criteria.expectedStatus",route.criteria().expectedStatus().name()))) {
                 boolean matched = route.criteria().matches(event);
@@ -206,7 +206,10 @@ public final class WorkflowEngine {
     }
 
     private static boolean isTerminal(StatusEvent event) {
-        return event.status() != Status.RUNNING && event.status() != Status.SUSPENDED;
+        return switch (event.status()) {
+            case SUCCESS, FAILED, SKIPPED, ABANDONED -> true;
+            default -> false;
+        };
     }
 
     private void publish(StatusEvent event) {

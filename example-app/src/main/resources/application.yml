@@ -13,22 +13,25 @@ spring:
       connection-timeout: 5000
   kafka:
     template:
-      observation-enabled: true
+      observation-enabled: false
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       properties:
         enable.idempotence: true
-        compression.type: zstd
+        compression.type: lz4
         linger.ms: 5
-        batch.size: 65536
-        buffer.memory: 33554432
+        batch.size: 16384
+        buffer.memory: 8388608
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+        max.block.ms: 10000
     consumer:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      max-poll-records: 250
+      max-poll-records: 25
   jpa:
     hibernate:
       ddl-auto: update
@@ -48,7 +51,7 @@ workflow:
       consumer-group: order-workflow-example
       replay-topic: workflow.replay
       replay-consumer-group: order-workflow-example-replay
-      concurrency: ${WORKFLOW_KAFKA_CONCURRENCY:4}
+      concurrency: ${WORKFLOW_KAFKA_CONCURRENCY:2}
       topic-partitions: ${WORKFLOW_KAFKA_PARTITIONS:12}
       topic-replication-factor: 1
       # Do not return an accepted launch or advance a workflow until Kafka has

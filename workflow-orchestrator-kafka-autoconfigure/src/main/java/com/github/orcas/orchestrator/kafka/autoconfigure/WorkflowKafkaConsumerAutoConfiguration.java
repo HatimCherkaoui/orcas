@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 @ConditionalOnProperty(prefix = "workflow.orchestrator.kafka", name = "enabled", havingValue = "true", matchIfMissing = true)
 public final class WorkflowKafkaConsumerAutoConfiguration {
     @Bean
+    @ConditionalOnProperty(prefix = "workflow.orchestrator.kafka", name = "consumers-enabled", havingValue = "true", matchIfMissing = true)
     WorkflowReplayCommandConsumer workflowReplayCommandConsumer(
             ObjectProvider<WorkflowEngine> engine,
             ObjectMapper mapper,
@@ -26,6 +27,7 @@ public final class WorkflowKafkaConsumerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "workflow.orchestrator.kafka", name = "consumers-enabled", havingValue = "true", matchIfMissing = true)
     WorkflowEventConsumer workflowEventConsumer(
             ObjectProvider<WorkflowEngine> engine,
             ObjectMapper mapper,

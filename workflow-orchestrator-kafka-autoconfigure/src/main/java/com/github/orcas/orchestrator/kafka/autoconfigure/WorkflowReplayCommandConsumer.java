@@ -27,6 +27,7 @@ public final class WorkflowReplayCommandConsumer {
     @KafkaListener(
             topics = "${workflow.orchestrator.kafka.replay-topic:workflow.replay}",
             groupId = "${workflow.orchestrator.kafka.replay-consumer-group:workflow-orchestrator-replay}",
+            concurrency = "${workflow.orchestrator.kafka.replay-concurrency:1}",
             containerFactory = "workflowKafkaListenerContainerFactory")
     public void onRecord(org.apache.kafka.clients.consumer.ConsumerRecord<String,String> record) throws Exception {
         consume(record.value(),record.headers());

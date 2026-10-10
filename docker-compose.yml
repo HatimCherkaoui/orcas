@@ -23,12 +23,23 @@ services:
     networks: [ workflow-net ]
 
   kafka:
+    cpu_shares: 2048
     image: apache/kafka:4.3.1
     container_name: workflow-kafka
     profiles: [ dev, prod ]
     restart: unless-stopped
     environment:
       KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xms128m -Xmx256m}
+      KAFKA_JVM_PERFORMANCE_OPTS: ${KAFKA_JVM_PERFORMANCE_OPTS:--server -XX:+UseG1GC -XX:ActiveProcessorCount=2 -XX:+ExitOnOutOfMemoryError}
+      KAFKA_NUM_NETWORK_THREADS: ${KAFKA_NETWORK_THREADS:-2}
+      KAFKA_NUM_IO_THREADS: ${KAFKA_IO_THREADS:-4}
+      KAFKA_BACKGROUND_THREADS: 2
+      KAFKA_LOG_CLEANER_THREADS: 1
+      KAFKA_LOG_CLEANER_DEDUPE_BUFFER_SIZE: 33554432
+      KAFKA_LOG_SEGMENT_BYTES: 67108864
+      KAFKA_LOG_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-168}
+      KAFKA_BROKER_SESSION_TIMEOUT_MS: ${KAFKA_BROKER_SESSION_TIMEOUT_MS:-30000}
+      KAFKA_CONTROLLER_QUORUM_REQUEST_TIMEOUT_MS: ${KAFKA_CONTROLLER_REQUEST_TIMEOUT_MS:-10000}
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
@@ -48,12 +59,13 @@ services:
       - "29092:29092"
     volumes:
       - kafka_data:/var/lib/kafka/data
+      - ./scripts/kafka-health.sh:/opt/orcas/kafka-health.sh:ro
     healthcheck:
-      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1" ]
-      interval: 10s
+      test: [ "CMD", "bash", "/opt/orcas/kafka-health.sh" ]
+      interval: 30s
       timeout: 10s
       retries: 20
-      start_period: 15s
+      start_period: 30s
     networks: [ workflow-net ]
 
   workflow-management-service:
@@ -87,7 +99,8 @@ services:
       WORKFLOW_ORCHESTRATOR_SERVICE_ENABLED: "true"
       WORKFLOW_ORCHESTRATOR_DASHBOARD_ENABLED: "true"
       WORKFLOW_ORCHESTRATOR_KAFKA_ENABLED: "true"
-      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
+      WORKFLOW_ORCHESTRATOR_KAFKA_CONSUMERS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null" ]
       interval: 10s
@@ -134,7 +147,11 @@ services:
       DEMO_PAYMENT_BASE_URL: http://wiremock:8080
       DEMO_NOTIFICATION_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
-      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
+      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
+      WORKFLOW_KAFKA_CONCURRENCY: ${WORKFLOW_KAFKA_CONCURRENCY:-2}
+      WORKFLOW_KAFKA_PARTITIONS: ${WORKFLOW_KAFKA_PARTITIONS:-12}
+      WORKFLOW_ASYNC_CONCURRENCY: ${WORKFLOW_ASYNC_CONCURRENCY:-4}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-6}
       LOG_FORMAT: ecs
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness >/dev/null" ]
@@ -168,7 +185,9 @@ services:
     container_name: workflow-wiremock
     profiles: [ dev, prod ]
     restart: unless-stopped
-    command: [ "--global-response-templating", "--verbose" ]
+    environment:
+      JAVA_OPTS: "-Xms32m -Xmx128m -XX:ActiveProcessorCount=2"
+    command: [ "--global-response-templating", "--max-request-journal-entries", "1000" ]
     volumes:
       - ./wiremock:/home/wiremock:ro
     ports:
@@ -176,6 +195,7 @@ services:
     networks: [ workflow-net ]
 
   elasticsearch:
+    cpu_shares: 256
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: workflow-elasticsearch
     profiles: [ prod ]
@@ -184,7 +204,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=true
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms384m -Xmx384m -XX:ActiveProcessorCount=2}
     ports:
       - "9200:9200"
     volumes:
@@ -218,6 +238,7 @@ services:
     entrypoint: ["/bin/bash", "/observability/setup-elasticsearch.sh"]
 
   kibana:
+    cpu_shares: 256
     image: docker.elastic.co/kibana/kibana:8.15.0
     container_name: workflow-kibana
     profiles: [ prod ]
@@ -256,6 +277,7 @@ services:
     entrypoint: ["/bin/bash", "/observability/setup-kibana.sh"]
 
   otel-collector:
+    cpu_shares: 512
     image: otel/opentelemetry-collector-contrib:0.123.0
     container_name: workflow-otel-collector
     profiles: [ prod ]

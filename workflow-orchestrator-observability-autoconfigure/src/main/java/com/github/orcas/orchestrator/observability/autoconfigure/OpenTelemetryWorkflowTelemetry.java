@@ -79,7 +79,7 @@ public final class OpenTelemetryWorkflowTelemetry implements WorkflowTelemetry {
             public void error(Throwable error) { failed = true; span.recordException(error); span.setStatus(StatusCode.ERROR); }
             public void attribute(String key,String value) {
                 span.setAttribute(key,value);
-                if (key.equals("workflow.durationMs")) workflowDurationMs = Double.valueOf(value);
+                if (key.equals("workflowDurationMs")) workflowDurationMs = Double.valueOf(value);
                 if ((key.equals("status") && (value.equals("FAILED") || value.equals("SUSPENDED"))) || (key.equals("http.response.status_code") && Integer.parseInt(value) >= 400)) {
                     failed = true; span.setStatus(StatusCode.ERROR);
                 }

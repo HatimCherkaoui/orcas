@@ -11,7 +11,7 @@ class WorkflowKafkaPropertiesTest {
         assertThat(properties.isEnabled()).isTrue();
         assertThat(properties.getTopic()).isEqualTo("workflow.status");
         assertThat(properties.getConsumerGroup()).isEqualTo("workflow-orchestrator");
-        assertThat(properties.getConcurrency()).isEqualTo(4);
+        assertThat(properties.getConcurrency()).isEqualTo(2);
         assertThat(properties.getTopicPartitions()).isEqualTo(12);
         assertThat(properties.getTopicReplicationFactor()).isEqualTo((short) 1);
         assertThat(properties.isWaitForAcknowledgement()).isTrue();
