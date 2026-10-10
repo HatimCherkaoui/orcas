@@ -212,6 +212,13 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
     }
 
     @Override
+    public Optional<Instant> startedAt(String workflowId) {
+        return jdbc.query("select date_created from workflow where pipeline_id=:id",
+                Map.of("id", workflowId), (rs, row) -> rs.getTimestamp("date_created").toInstant())
+                .stream().findFirst();
+    }
+
+    @Override
     public void finish(StatusEvent event) {
         OffsetDateTime now = event.timestamp() == null
                 ? OffsetDateTime.now(ZoneOffset.UTC)

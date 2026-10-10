@@ -15,5 +15,13 @@ public interface WorkflowTelemetry {
         @Override void close();
     }
     Operation begin(String type, String name, Metadata metadata, Map<String, String> attributes);
+    /** Opt in to persisted end-to-end completion measurements. */
+    default boolean recordsCompletions() { return false; }
+    /** A terminal transition, including a new terminal transition after a manual replay. */
+    default void completed(Metadata metadata, Map<String, String> attributes, java.time.Duration duration) {
+        try (var operation = begin("Workflow", "workflow.completed", metadata, attributes)) {
+            operation.attribute("workflow.durationMs", Double.toString(Math.max(0, duration.toNanos() / 1_000_000.)));
+        }
+    }
     static WorkflowTelemetry noop() { return (type, name, metadata, attributes) -> () -> { }; }
 }

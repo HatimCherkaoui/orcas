@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentMap;
 
 /** Non-persistent state store for tests and local runs. */
 public final class InMemoryWorkflowStateStore implements WorkflowStateStore, WorkflowRetryStateStore {
+    private final ConcurrentMap<String, java.time.Instant> starts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, WorkflowContext> contexts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> workflows = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, StepContext> steps = new ConcurrentHashMap<>();
@@ -20,6 +21,7 @@ public final class InMemoryWorkflowStateStore implements WorkflowStateStore, Wor
 
     @Override
     public void start(String workflowId, String workflow, WorkflowContext context) {
+        starts.put(workflowId, java.time.Instant.now());
         workflows.put(workflowId, workflow);
         contexts.put(workflowId, context);
     }
@@ -57,6 +59,9 @@ public final class InMemoryWorkflowStateStore implements WorkflowStateStore, Wor
     public void updateContext(String workflowId, WorkflowContext context) {
         contexts.put(workflowId, context);
     }
+
+    @Override
+    public Optional<java.time.Instant> startedAt(String workflowId) { return Optional.ofNullable(starts.get(workflowId)); }
 
     @Override
     public void finish(StatusEvent event) {

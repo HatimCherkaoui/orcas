@@ -274,6 +274,9 @@
                     <version>${maven.surefire.version}</version>
                     <configuration>
                         <useModulePath>false</useModulePath>
+                        <skipAfterFailureCount>1</skipAfterFailureCount>
+                        <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
+                        <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
                         <argLine>-javaagent:${org.mockito:mockito-core:jar} --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>
@@ -283,6 +286,9 @@
                     <version>${maven.failsafe.version}</version>
                     <configuration>
                         <useModulePath>false</useModulePath>
+                        <skipAfterFailureCount>1</skipAfterFailureCount>
+                        <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
+                        <forkedProcessExitTimeoutInSeconds>30</forkedProcessExitTimeoutInSeconds>
                         <argLine>-javaagent:${org.mockito:mockito-core:jar} --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>

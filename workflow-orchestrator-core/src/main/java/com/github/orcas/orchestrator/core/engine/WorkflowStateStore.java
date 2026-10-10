@@ -23,4 +23,7 @@ public interface WorkflowStateStore {
     void updateContext(String workflowId, WorkflowContext context);
 
     void finish(StatusEvent event);
+
+    /** Persistent start time for end-to-end latency; custom stores may opt in. */
+    default Optional<java.time.Instant> startedAt(String workflowId) { return Optional.empty(); }
 }

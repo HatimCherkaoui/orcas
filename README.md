@@ -218,3 +218,43 @@ for setup, extension APIs, field names, resource limits and verification command
 - Maintainer: [Hatim Cherkaoui](https://github.com/HatimCherkaoui)
 
 Licensed under [Apache 2.0](LICENSE).
+
+### Faster Compose builds and verification
+
+Compose builds both backend JARs once through `Dockerfile.backend`, using two
+Maven reactor workers and a persistent BuildKit dependency cache. The frontend
+build runs independently and caches npm downloads. Context allowlists exclude
+tests, local output, IDE files and documentation from image builds. Runtime
+images contain only their application JAR or static frontend assets.
+
+Image packaging skips test compilation; run `./verify.sh` before publishing.
+Verification runs Maven modules with two workers and frontend checks concurrently,
+stopping the other task on failure. Test methods within a module stay sequential
+because integration scenarios share database and Kafka state. Set `MAVEN_THREADS`
+to tune concurrency and `VERIFY_TIMEOUT_SECONDS` to change the 900-second limit.
+Image builds stop after 300 seconds; Docker build arguments `MAVEN_THREADS` and
+`BUILD_TIMEOUT_SECONDS` are configurable. Maven uses `package`/`verify`, avoiding
+unnecessary local-repository installs and clean rebuilds.
+
+For a bounded build and startup, run `python3 scripts/compose-up.py prod`.
+It requires Buildx, stops on the first failed command, caps the whole build at
+450 seconds and startup at 600 seconds (configurable with
+`COMPOSE_BUILD_TIMEOUT_SECONDS` / `COMPOSE_START_TIMEOUT_SECONDS`).
+
+In IntelliJ's Docker Compose run configuration, use `docker-compose.yml` and the
+chosen profile with **Build images** enabled. Remove any redundant Maven
+`clean install` before-launch tasks; Compose builds the JARs itself. Existing
+personal IDE configurations are not checked into this repository.
+
+On a Colima VM with only 4 GB RAM, the full production stack competes with the
+Maven builder for memory. For a rebuild that changes Java sources, temporarily
+stop the two application containers, then run the bounded launcher (which
+restarts them):
+
+```sh
+docker compose --profile prod stop example-app workflow-management-service
+python3 scripts/compose-up.py prod
+```
+
+Volumes and infrastructure services are retained. This is a local development
+workflow; schedule downtime appropriately when using it on a deployed instance.

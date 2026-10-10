@@ -17,6 +17,10 @@ public final class CorrelationSpanProcessor implements SpanProcessor {
             if (current.workflow() != null) span.setAttribute("workflow",current.workflow());
             if (current.step() != null) span.setAttribute("workflowStep",current.step().stepName());
         }
+        String workflow = Baggage.fromContext(parentContext).getEntryValue("workflow");
+        if (workflow != null && span.getAttribute(AttributeKey.stringKey("workflow")) == null)
+            span.setAttribute("workflow", workflow);
+        span.setAttribute("operation", span.getName());
         Baggage.fromContext(parentContext).forEach((key,entry) -> {
             String canonical = CorrelationIdentifiers.canonical(key);
             if (canonical != null && CorrelationIdentifiers.valid(canonical,entry.getValue())) span.setAttribute(canonical,entry.getValue());

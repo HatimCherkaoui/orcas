@@ -28,6 +28,7 @@ services:
     profiles: [ dev, prod ]
     restart: unless-stopped
     environment:
+      KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xms128m -Xmx256m}
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
@@ -58,7 +59,11 @@ services:
   workflow-management-service:
     build:
       context: .
-      dockerfile: workflow-orchestrator-management-service/Dockerfile
+      dockerfile: Dockerfile.backend
+      target: management
+      args:
+        MAVEN_THREADS: ${MAVEN_THREADS:-2}
+        BUILD_TIMEOUT_SECONDS: ${BUILD_TIMEOUT_SECONDS:-300}
     container_name: workflow-management-service
     profiles: [ dev, prod ]
     restart: unless-stopped
@@ -82,7 +87,7 @@ services:
       WORKFLOW_ORCHESTRATOR_SERVICE_ENABLED: "true"
       WORKFLOW_ORCHESTRATOR_DASHBOARD_ENABLED: "true"
       WORKFLOW_ORCHESTRATOR_KAFKA_ENABLED: "true"
-      JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
+      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
     healthcheck:
       test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null" ]
       interval: 10s
@@ -96,7 +101,11 @@ services:
   example-app:
     build:
       context: .
-      dockerfile: example-app/Dockerfile
+      dockerfile: Dockerfile.backend
+      target: example
+      args:
+        MAVEN_THREADS: ${MAVEN_THREADS:-2}
+        BUILD_TIMEOUT_SECONDS: ${BUILD_TIMEOUT_SECONDS:-300}
     container_name: workflow-example-app
     profiles: [ dev, prod ]
     restart: unless-stopped
@@ -125,8 +134,14 @@ services:
       DEMO_PAYMENT_BASE_URL: http://wiremock:8080
       DEMO_NOTIFICATION_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
-      JAVA_TOOL_OPTIONS: "-XX:+UseContainerSupport"
+      JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
       LOG_FORMAT: ecs
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness >/dev/null" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     ports:
       - "8080:8080"
     networks: [ workflow-net ]
@@ -175,11 +190,17 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: [ "CMD-SHELL", "curl -u elastic:$$ELASTIC_PASSWORD -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'" ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error --connect-timeout 2 --max-time 5
+          --user "elastic:$$ELASTIC_PASSWORD"
+          'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s'
+          | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(green|yellow)"'
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s
     networks: [ workflow-net ]
 
   es-setup:
@@ -208,6 +229,7 @@ services:
       - ELASTICSEARCH_USERNAME=kibana_system
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
       - XPACK_FLEET_ISOUTOFTHEBOXENABLED=false
+      - NODE_OPTIONS=${KIBANA_NODE_OPTIONS:---max-old-space-size=512}
     depends_on:
       es-setup:
         condition: service_completed_successfully
@@ -215,8 +237,8 @@ services:
       test: [ "CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'" ]
       interval: 5s
       timeout: 5s
-      retries: 20
-      start_period: 30s
+      retries: 60
+      start_period: 120s
     networks: [ workflow-net ]
 
   kibana-init:

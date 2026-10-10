@@ -2,8 +2,11 @@
 FROM node:24.20.0-alpine3.24 AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --ignore-scripts --no-audit --no-fund
-COPY . .
+RUN --mount=type=cache,id=orcas-npm-cache,target=/root/.npm \
+    npm ci --ignore-scripts --no-audit --no-fund --prefer-offline \
+    --fetch-retries=1 --fetch-timeout=30000
+COPY index.html vite.config.js ./
+COPY src ./src
 ARG VITE_KIBANA_URL=http://localhost:5601
 ENV VITE_KIBANA_URL=$VITE_KIBANA_URL
 RUN npm run build

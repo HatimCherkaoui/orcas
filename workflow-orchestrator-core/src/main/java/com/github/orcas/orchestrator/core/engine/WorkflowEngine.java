@@ -170,6 +170,11 @@ public final class WorkflowEngine {
         }
         if (shouldFinish(event, definition, routes, joinRelated)) {
             store.finish(event);
+            if (observer.telemetry().recordsCompletions()) store.startedAt(event.workflowId()).ifPresent(started -> observer.telemetry().completed(
+                    store.context(event.workflowId()).metadata(),
+                    java.util.Map.of("workflow", event.workflow(), "workflowId", event.workflowId(),
+                            "workflowStep", event.step(), "status", event.status().name()),
+                    java.time.Duration.between(started, java.time.Instant.now())));
         }
         dispatch(event, routes);
     }

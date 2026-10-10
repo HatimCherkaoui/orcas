@@ -29,7 +29,13 @@ public final class OpenTelemetryWorkflowTelemetry implements WorkflowTelemetry {
                 .setExplicitBucketBoundariesAdvice(List.of(.005,.01,.025,.05,.1,.25,.5,1.,2.5,5.,10.,30.,60.)).build();
         operations = meter.counterBuilder("orcas.operation.count").build();
     }
+    @Override public boolean recordsCompletions() { return true; }
     @Override public Operation begin(String type, String name, Metadata metadata, Map<String,String> attributes) {
+        var resolved = new LinkedHashMap<>(attributes);
+        var execution = WorkflowContextHolder.execution();
+        if (execution != null && execution.workflow() != null) resolved.putIfAbsent("workflow", execution.workflow());
+        String workflowName = resolved.getOrDefault("workflow", io.opentelemetry.api.baggage.Baggage.current().getEntryValue("workflow"));
+        if (workflowName != null) resolved.putIfAbsent("workflow", workflowName);
         CorrelationIdentifiers.ensure(metadata);
         Context parent = Context.current();
         var current = Span.fromContext(parent).getSpanContext();
@@ -50,26 +56,30 @@ public final class OpenTelemetryWorkflowTelemetry implements WorkflowTelemetry {
         span.setAttribute("eventType", type);
         metadata.identifiers().forEach(span::setAttribute);
         span.setAttribute(io.opentelemetry.api.common.AttributeKey.stringArrayKey("identifierKeys"), new java.util.ArrayList<>(metadata.identifiers().keySet()));
-        attributes.forEach(span::setAttribute);
+        resolved.forEach(span::setAttribute);
+        span.setAttribute("operation", name);
         var baggage = io.opentelemetry.api.baggage.Baggage.builder();
+        if (workflowName != null) baggage.put("workflow", workflowName);
         metadata.identifiers().forEach((key,value) -> { if (CorrelationIdentifiers.keys().contains(key)) baggage.put(key,value); });
         var scope = parent.with(baggage.build()).with(span).makeCurrent();
         Map<String,String> previous = MDC.getCopyOfContextMap();
         if (mdc) {
         metadata.identifiers().forEach(MDC::put);
-        attributes.forEach(MDC::put);
+        resolved.forEach(MDC::put);
         MDC.put("eventType", type);
         MDC.put("identifierKeys",String.join(",",metadata.identifiers().keySet()));
         if (span.getSpanContext().isValid()) { MDC.put("spanId",span.getSpanContext().getSpanId()); MDC.put("traceId",span.getSpanContext().getTraceId()); }
         }
         long started = System.nanoTime();
         return new Operation() {
-            private boolean failed = "FAILED".equals(attributes.get("status"));
+            private boolean failed = "FAILED".equals(resolved.get("status"));
+            private Double workflowDurationMs;
             private final AtomicBoolean ended = new AtomicBoolean();
             private boolean detached;
             public void error(Throwable error) { failed = true; span.recordException(error); span.setStatus(StatusCode.ERROR); }
             public void attribute(String key,String value) {
                 span.setAttribute(key,value);
+                if (key.equals("workflow.durationMs")) workflowDurationMs = Double.valueOf(value);
                 if ((key.equals("status") && (value.equals("FAILED") || value.equals("SUSPENDED"))) || (key.equals("http.response.status_code") && Integer.parseInt(value) >= 400)) {
                     failed = true; span.setStatus(StatusCode.ERROR);
                 }
@@ -88,12 +98,15 @@ public final class OpenTelemetryWorkflowTelemetry implements WorkflowTelemetry {
             public void close() {
                 if (!ended.compareAndSet(false,true)) return;
                 try {
-                    var dimensions = Attributes.builder().put("eventType",type).put("operation",name)
-                            .put("workflow",attributes.getOrDefault("workflow","none")).put("outcome",failed ? "failure" : "success").build();
-                    span.setAttribute("durationMs", (System.nanoTime()-started)/1_000_000.);
+                    var dimensionBuilder = Attributes.builder().put("eventType",type).put("operation",name)
+                            .put("workflow",resolved.getOrDefault("workflow","none")).put("outcome",failed ? "failure" : "success");
+                    if (resolved.containsKey("workflowStep")) dimensionBuilder.put("workflowStep", resolved.get("workflowStep"));
+                    var dimensions = dimensionBuilder.build();
+                    double durationMs = workflowDurationMs != null ? workflowDurationMs : (System.nanoTime()-started)/1_000_000.;
+                    span.setAttribute("durationMs", durationMs);
                     span.setAttribute("outcome",failed ? "failure" : "success");
                     Context metricContext = Context.current().with(span);
-                    latency.record((System.nanoTime()-started)/1_000_000_000., dimensions, metricContext);
+                    latency.record(durationMs / 1000., dimensions, metricContext);
                     operations.add(1,dimensions,metricContext);
                     if (failed) span.setStatus(StatusCode.ERROR);
                     span.end();
