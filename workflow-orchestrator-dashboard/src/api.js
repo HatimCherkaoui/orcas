@@ -83,11 +83,14 @@ export const api = {
   metadata: (workflowId) => request(`/workflows/${encode(workflowId)}/metadata`),
   workflowLogs: (workflowId) => request(`/workflows/${encode(workflowId)}/logs`),
   stepLogs: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/logs`),
-  replayStep: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/replay`, { method: 'POST' }),
-  replaySuspendedSteps: (filters = {}) => {
-    const qs = query(filters);
-    return request(`/workflows/replays/suspended${qs ? `?${qs}` : ''}`, { method: 'POST' });
-  },
+  replayStep: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/replay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }),
+  replaySuspendedSteps: (filters = {}) => request('/workflows/replay', {
+    method: 'POST',
+    body: JSON.stringify(filters),
+  }),
   topics: () => request('/kafka/topics'),
   topic: (name) => request(`/kafka/topics/${encode(name)}`),
   consumerGroups: () => request('/kafka/consumer-groups'),

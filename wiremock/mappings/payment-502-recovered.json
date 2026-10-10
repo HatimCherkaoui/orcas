@@ -1,0 +1,15 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-502-recovery",
+  "requiredScenarioState": "RECOVERED",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "equalTo": "42.01"}}]
+  },
+  "response": {
+    "status": 202,
+    "jsonBody": {"paymentId": "pay-recovered-502", "status": "PENDING"},
+    "headers": {"Content-Type": "application/json"}
+  }
+}

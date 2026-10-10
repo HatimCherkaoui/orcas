@@ -2,9 +2,10 @@ package com.github.orcas.demo.rest;
 
 import com.github.orcas.orchestrator.core.api.ContextMapper;
 import com.github.orcas.orchestrator.core.model.StepExecutionContext;
-
+import org.springframework.stereotype.Component;
 import java.util.Map;
 
+@Component
 public final class OrderPayloadMapper implements ContextMapper<NotificationClient.NotificationRequest> {
     @Override
     public NotificationClient.NotificationRequest map(StepExecutionContext c) {

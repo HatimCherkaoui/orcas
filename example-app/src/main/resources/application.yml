@@ -5,6 +5,28 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:workflow}
     username: ${DB_USER:workflow}
     password: ${DB_PASSWORD:workflow}
+    hikari:
+      # Leave headroom for business-layer queries and other application instances.
+      # Size this per instance against the RDS max_connections budget.
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:8}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
+      connection-timeout: 5000
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        compression.type: zstd
+        linger.ms: 5
+        batch.size: 65536
+        buffer.memory: 33554432
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      max-poll-records: 250
   jpa:
     hibernate:
       ddl-auto: update
@@ -12,16 +34,25 @@ spring:
 
 workflow:
   orchestrator:
-    topic: workflow.status
-    consumer-group: order-workflow-example
-    persistence:
+    jdbc:
+      enabled: true
       schema-initialization: true
+    kafka:
+      enabled: true
+      topic: workflow.status
+      consumer-group: order-workflow-example
+      replay-topic: workflow.replay
+      replay-consumer-group: order-workflow-example-replay
+      concurrency: ${WORKFLOW_KAFKA_CONCURRENCY:4}
+      topic-partitions: ${WORKFLOW_KAFKA_PARTITIONS:12}
+      topic-replication-factor: 1
+      # Do not return an accepted launch or advance a workflow until Kafka has
+      # acknowledged the corresponding status event.
+      wait-for-acknowledgement: ${WORKFLOW_KAFKA_WAIT_FOR_ACKNOWLEDGEMENT:true}
+      missing-topics-fatal: false
     async:
       virtual-threads: true
-      concurrency: 16
-    kafka:
-      concurrency: 1
-      missing-topics-fatal: false
+      concurrency: ${WORKFLOW_ASYNC_CONCURRENCY:8}
     retry:
       enabled: true
       max-attempts: 3
@@ -39,10 +70,6 @@ workflow:
         refund-payment:
           max-attempts: 3
           delay: 2s
-    service:
-      enabled: true
-      base-path: /api/orchestrator
-      default-page-size: 25
     rest-client:
       connect-timeout: 3s
       response-timeout: 10s
@@ -50,6 +77,11 @@ workflow:
       pending-acquire-timeout: 5s
     circuit-breaker:
       enabled: true
+      sliding-window-size: ${DEMO_CIRCUIT_BREAKER_WINDOW_SIZE:20}
+      minimum-number-of-calls: ${DEMO_CIRCUIT_BREAKER_MINIMUM_CALLS:10}
+      failure-rate-threshold: ${DEMO_CIRCUIT_BREAKER_FAILURE_RATE:50}
+      permitted-number-of-calls-in-half-open-state: ${DEMO_CIRCUIT_BREAKER_HALF_OPEN_PROBES:2}
+      wait-duration-in-open-state: ${DEMO_CIRCUIT_BREAKER_COOLDOWN:30s}
 
 server:
   port: 8080
@@ -61,6 +93,7 @@ demo:
     base-url: ${DEMO_NOTIFICATION_BASE_URL:http://localhost:8089}
   inventory:
     base-url: ${DEMO_INVENTORY_BASE_URL:http://localhost:8089}
+    seed-quantity: ${DEMO_INVENTORY_SEED_QUANTITY:1000}
 
 management:
   endpoints:
@@ -79,10 +112,23 @@ management:
     baggage:
       correlation:
         enabled: true
-  otlp:
+  opentelemetry:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/traces}
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318/v1/logs}
 
 logging:
   level:
-    reactor.netty.http.client: DEBUG
+    reactor.netty.http.client: INFO
+    org.springframework.web: INFO
+    org.springframework.kafka: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.boot.autoconfigure: INFO
+    org.springframework.boot: INFO
+    org.springframework: ERROR
+    com.github.ghik.orcas: DEBUG

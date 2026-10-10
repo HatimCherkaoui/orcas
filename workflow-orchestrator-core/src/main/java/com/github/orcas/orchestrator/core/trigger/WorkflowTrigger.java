@@ -2,20 +2,14 @@ package com.github.orcas.orchestrator.core.trigger;
 
 import com.github.orcas.orchestrator.core.model.WorkflowContext;
 
-/**
- * Strategy for starting a workflow instance from some external stimulus (an inbound
- * HTTP request, a queue message, a scheduled/lambda invocation, a file dropped over
- * SSH/SFTP, ...). Marker sub-interfaces ({@link RestTrigger}, {@link QueueTrigger},
- * {@link LambdaTrigger}, {@link SshFileTrigger}) exist purely to let dependency
- * injection frameworks distinguish trigger flavors when several are registered.
- */
+/** Starts a workflow from an external stimulus without coupling core to its transport. */
 @FunctionalInterface
 public interface WorkflowTrigger {
     /**
-     * Starts (or otherwise dispatches to) the named workflow with the given context.
+     * Starts or dispatches the named workflow.
      *
-     * @param workflow name of the workflow to trigger
-     * @param context  business input and metadata for the new instance
+     * @param workflow workflow name
+     * @param context business input and metadata
      */
     void trigger(String workflow, WorkflowContext context);
 }

@@ -1,96 +1,72 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0">
+<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.github.orcas</groupId>
+        <groupId>io.github.hatimcherkaoui</groupId>
         <artifactId>workflow-orchestrator</artifactId>
-        <version>0.4.0-SNAPSHOT</version>
+        <version>0.6.0-SNAPSHOT</version>
     </parent>
     <artifactId>workflow-orchestrator-spring-boot-starter</artifactId>
+    <name>Workflow Orchestrator Spring Boot Starter</name>
+    <description>All Spring Boot integrations for the workflow orchestrator.</description>
     <dependencies>
         <dependency>
-            <groupId>com.github.orcas</groupId>
-            <artifactId>workflow-orchestrator-core</artifactId>
-            <version>${project.version}</version>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-spring-boot-autoconfigure</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-jdbc-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-kafka-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-kafka</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-rest-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-jackson</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-resilience-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-aspectj</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-observability-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webclient</artifactId>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-service-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
-        </dependency>
-        <!-- Resilience4j 2.4.0 introduced the Spring Boot 4 starter.
-             Keep the version explicit: 2.4.0's BOM did not initially include
-             resilience4j-spring-boot4, so relying on the BOM can cause
-             dependency-resolution failures. -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-spring-boot4</artifactId>
-            <version>${resilience4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-circuitbreaker</artifactId>
-            <version>${resilience4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.github.resilience4j</groupId>
-            <artifactId>resilience4j-reactor</artifactId>
-            <version>${resilience4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-test</artifactId>
-            <scope>test</scope>
+            <groupId>io.github.hatimcherkaoui</groupId>
+            <artifactId>workflow-orchestrator-dashboard-service-starter</artifactId>
         </dependency>
     </dependencies>
+    <profiles>
+        <profile>
+            <id>starter-documentation</id>
+            <activation><property><name>release</name></property></activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-jar-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-starter-javadocs</id>
+                                <phase>package</phase>
+                                <goals><goal>jar</goal></goals>
+                                <configuration>
+                                    <classifier>javadoc</classifier>
+                                    <classesDirectory>${project.basedir}</classesDirectory>
+                                    <includes><include>README.md</include></includes>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

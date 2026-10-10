@@ -5,91 +5,80 @@ import com.github.orcas.orchestrator.core.api.WorkflowStep;
 import com.github.orcas.orchestrator.core.model.StatusEvent;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Stream;
 
-/**
- * Immutable routing table for a single workflow: an ordered list of {@link Route}s,
- * each describing which step(s) should run when a {@link StatusEvent} matches a
- * {@link StatusCriteria}. Built via {@link PipelineBuilder} and looked up from the
- * {@code WorkflowRegistry} by name at runtime.
- */
+/** Immutable routing table for one workflow. */
 public final class WorkflowDefinition {
-    /**
-     * A single routing rule: when an incoming {@link StatusEvent} matches
-     * {@code criteria}, execute every step in {@code steps}. If {@code joinStep} is
-     * non-null and there is more than one step, the steps run as parallel branches and
-     * {@code joinStep} runs once all of them report {@code SUCCESS} (see
-     * {@code WorkflowEngine}'s join tracking, keyed by {@code joinKey}).
-     *
-     * @param criteria predicate matched against incoming events to select this route
-     * @param steps    step(s) to execute when the route matches (branches, if parallel)
-     * @param joinStep optional step executed once all parallel branches complete
-     * @param joinKey  unique key used to track in-flight join state for this route
-     */
-    public record Route(StatusCriteria criteria, List<WorkflowStep> steps, WorkflowStep joinStep, String joinKey) {
+    public record Route(
+            StatusCriteria criteria,
+            List<WorkflowStep> steps,
+            WorkflowStep joinStep,
+            String joinKey) {
+
+        /** Creates an immutable route. A join requires both a step and a key. */
         public Route {
+            Objects.requireNonNull(criteria, "criteria");
             steps = List.copyOf(steps);
+            if (steps.isEmpty()) {
+                throw new IllegalArgumentException("Route requires at least one step");
+            }
+            steps.forEach(step -> Objects.requireNonNull(step, "step"));
+            if ((joinStep == null) != (joinKey == null)) {
+                throw new IllegalArgumentException("joinStep and joinKey must be provided together");
+            }
+        }
+
+        /** Returns whether this route waits for multiple steps before its join step. */
+        public boolean hasJoin() {
+            return joinStep != null;
         }
     }
 
     private final String name;
     private final List<Route> routes;
 
-    /**
-     * @param n workflow name; must be non-blank and unique across the application
-     * @param r ordered routing table for this workflow
-     * @throws IllegalArgumentException if {@code n} is null or blank
-     */
-    public WorkflowDefinition(String n, List<Route> r) {
-        if (n == null || n.isBlank()) throw new IllegalArgumentException("workflow name is required");
-        name = n;
-        routes = List.copyOf(r);
+    public WorkflowDefinition(String name, List<Route> routes) {
+        this.name = requireText(name, "workflow name");
+        this.routes = List.copyOf(routes);
+        this.routes.forEach(Objects::requireNonNull);
     }
 
-    /** @return the unique workflow name */
     public String name() {
         return name;
     }
 
-    /** @return an immutable view of this workflow's routing table */
     public List<Route> routes() {
         return routes;
     }
 
-    /**
-     * Finds a step by name across all routes (including join steps).
-     *
-     * @param stepName step name to look up; the synthetic {@link StepNames#INIT} name
-     *                 always resolves to {@code null} since it is not a real step
-     * @return the matching step, or {@code null} if not found
-     */
-    public WorkflowStep findStep(String stepName) {
-        if (StepNames.INIT.name().equals(stepName)) {
-            return null;
+    public Optional<WorkflowStep> findStep(String stepName) {
+        if (StepNames.INIT.equals(stepName)) {
+            return Optional.empty();
         }
         return routes.stream()
-                .flatMap(route -> java.util.stream.Stream.concat(
+                .flatMap(route -> Stream.concat(
                         route.steps().stream(),
-                        route.joinStep() == null ? java.util.stream.Stream.empty()
-                                : java.util.stream.Stream.of(route.joinStep())))
+                        route.joinStep() == null ? Stream.empty() : Stream.of(route.joinStep())))
                 .filter(step -> step.name().equals(stepName))
-                .findFirst()
-                .orElse(null);
+                .findFirst();
     }
 
-    /**
-     * @param e incoming status event
-     * @return every route whose criteria matches the event, in declaration order
-     */
-    public List<Route> matching(StatusEvent e) {
-        return routes.stream().filter(r -> r.criteria().matches(e)).toList();
+    public List<Route> matching(StatusEvent event) {
+        return routes.stream()
+                .filter(route -> route.criteria().matches(event))
+                .toList();
     }
 
-    /**
-     * @param e incoming status event
-     * @return {@code true} if some route's criteria is waiting for further events
-     *         before it can match (e.g. an incomplete parallel join)
-     */
-    public boolean waitingFor(StatusEvent e) {
-        return routes.stream().anyMatch(r -> r.criteria().waitsFor(e));
+    public boolean waitingFor(StatusEvent event) {
+        return routes.stream().anyMatch(route -> route.criteria().waitsFor(event));
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value;
     }
 }

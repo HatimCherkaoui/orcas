@@ -1,0 +1,2 @@
+com.github.orcas.orchestrator.kafka.autoconfigure.WorkflowKafkaAutoConfiguration
+com.github.orcas.orchestrator.kafka.autoconfigure.WorkflowKafkaConsumerAutoConfiguration

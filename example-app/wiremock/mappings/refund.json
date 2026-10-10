@@ -10,8 +10,8 @@
   "response": {
     "status": 500,
     "jsonBody": {
-      "paymentId": "pay-demo-001",
-      "status": "REFUNDED"
+      "errorCode": "REFUND-ERROR-1",
+      "errorMessage": "Refund failed due to insufficient funds"
     },
     "headers": {
       "Content-Type": "application/json"

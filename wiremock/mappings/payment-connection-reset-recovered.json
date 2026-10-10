@@ -1,0 +1,15 @@
+{
+  "priority": 1,
+  "scenarioName": "payment-connection-reset",
+  "requiredScenarioState": "RESET_ONCE",
+  "request": {
+    "method": "POST",
+    "urlPath": "/payments",
+    "bodyPatterns": [{"matchesJsonPath": {"expression": "$.amount", "equalTo": "7.07"}}]
+  },
+  "response": {
+    "status": 202,
+    "jsonBody": {"paymentId": "pay-recovered-reset", "status": "PENDING"},
+    "headers": {"Content-Type": "application/json"}
+  }
+}
