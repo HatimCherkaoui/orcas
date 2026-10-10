@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="OrderWorkflowIntegrationTest Colima" type="JUnit" factoryName="JUnit">
+    <module name="workflow-orchestrator-order-example" />
+    <option name="PACKAGE_NAME" value="com.github.orcas.demo" />
+    <option name="MAIN_CLASS_NAME" value="com.github.orcas.demo.OrderWorkflowIntegrationTest" />
+    <option name="TEST_OBJECT" value="class" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/example-app" />
+    <envs>
+      <env name="TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE" value="/var/run/docker.sock" />
+    </envs>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
