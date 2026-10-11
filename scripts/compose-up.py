@@ -47,7 +47,7 @@ for command, limit in steps:
 # Require successful initialization separately from long-running readiness.
 expected = set(subprocess.check_output(base + ['config', '--services'], cwd=root,
                                        text=True, timeout=15).split())
-initializers = {'es-setup', 'kibana-init'}
+initializers = {'es-setup', 'kibana-init', 'otel-storage-init'}
 deadline = started + startup_timeout
 while True:
     try:
