@@ -1,3 +1,4 @@
+import { copyText } from '../../utils/observability';
 import { useState } from 'react';
 import { RefreshCw, AlertTriangle, Inbox, Copy, Check, Server, Terminal } from 'lucide-react';
 
@@ -5,13 +6,11 @@ export function Card({ children, className = '' }) {
   return <section className={`card ${className}`}>{children}</section>;
 }
 
-export function Loading({ message = 'Loading…' }) {
-  return (
-    <div className="state-card">
-      <RefreshCw className="spin" size={20} />
-      <span>{message}</span>
-    </div>
-  );
+export function Loading({ message = 'Loading…', variant = 'detail', rows = 5 }) {
+  return <div className={`skeleton-loading skeleton-${variant}`} role="status" aria-live="polite" aria-busy="true">
+    <span className="sr-only">{message}</span>
+    {Array.from({ length: rows }, (_, i) => <div className="skeleton-row" key={i} aria-hidden="true"><span className="skeleton-block skeleton-label"/><span className="skeleton-block skeleton-value"/><span className="skeleton-block skeleton-short"/></div>)}
+  </div>;
 }
 
 export function ErrorState({ error, retry, title = 'Unable to load data' }) {
@@ -23,14 +22,14 @@ export function ErrorState({ error, retry, title = 'Unable to load data' }) {
   const statusLabel = isNetworkError ? 'Network Offline' : `HTTP ${status}`;
 
   const suggestion = isNetworkError
-    ? 'Cannot reach backend API. Ensure Spring Boot is running on port 8080, or start the mock server with: npm run mock'
+    ? 'The workflow service is unavailable. Check your connection and try again.'
     : status === 404
     ? 'The requested workflow resource or definition could not be located on the server.'
     : status >= 500
     ? 'Internal server error occurred while processing the workflow request.'
     : 'Please verify the request parameters and network connection.';
 
-  function copyDiagnostics() {
+  async function copyDiagnostics() {
     const payload = JSON.stringify({
       status: error?.status,
       message: error?.message,
@@ -38,7 +37,7 @@ export function ErrorState({ error, retry, title = 'Unable to load data' }) {
       path: error?.path,
       timestamp: new Date().toISOString()
     }, null, 2);
-    navigator.clipboard?.writeText(payload);
+    try { await copyText(payload); } catch { return; }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

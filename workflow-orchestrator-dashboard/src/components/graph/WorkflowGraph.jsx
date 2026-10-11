@@ -13,6 +13,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { buildGraph, layoutNodes } from './graphModel';
 import { nodeTypes } from './StepNode';
+import { useTheme } from '../../hooks/useTheme';
 
 /**
  * The dashboard's primary, full-viewport interactive surface: it turns the workflow
@@ -22,32 +23,41 @@ import { nodeTypes } from './StepNode';
  */
 function GraphCanvas({ steps, definition, selectedStepName, onSelectStep }) {
   const { fitView } = useReactFlow();
-  const didInitialFit = useRef(false);
+  const { theme } = useTheme();
+  const layoutCache = useRef({ topology: null, positions: new Map() });
   const graph = useMemo(() => buildGraph(steps, definition), [steps, definition]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
+  const topology = JSON.stringify([graph.nodes.map((node) => node.id), graph.edges.map(({ id, source, target }) => [id, source, target])]);
   useEffect(() => {
-    const laidOut = layoutNodes(graph.nodes, graph.edges);
-    setNodes(laidOut);
-    setEdges(graph.edges);
-    if (!didInitialFit.current && graph.nodes.length) {
-      didInitialFit.current = true;
-      const timer = setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 30);
-      return () => clearTimeout(timer);
+    const changed = layoutCache.current.topology !== topology;
+    if (changed) {
+      layoutCache.current = { topology, positions: new Map(layoutNodes(graph.nodes, graph.edges).map((node) => [node.id, node.position])) };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph]);
+    setNodes((current) => {
+      const previous = new Map(current.map((node) => [node.id, node]));
+      return graph.nodes.map((node) => {
+        const old = previous.get(node.id);
+        const selected = node.id === selectedStepName;
+        const sameData = old && JSON.stringify(old.data) === JSON.stringify(node.data);
+        if (!changed && sameData && old.selected === selected) return old;
+        return { ...node, data: sameData ? old.data : node.data, selected,
+          position: !changed && old ? old.position : layoutCache.current.positions.get(node.id) };
+      });
+    });
+    setEdges(graph.edges.map((edge) => ({ ...edge, animated: edge.animated && graph.nodes.some((node) => node.id === edge.source && ['RUNNING', 'RUNNING_ASYNC'].includes(node.data.step.state)) })));
+  }, [graph, topology, selectedStepName, setNodes, setEdges]);
 
-  // Keep the "selected" flag on nodes in sync without rebuilding the whole graph/layout.
   useEffect(() => {
-    setNodes((current) =>
-      current.map((node) => ({ ...node, selected: node.id === selectedStepName }))
-    );
-  }, [selectedStepName, setNodes]);
+    if (!graph.nodes.length) return;
+    const frame = requestAnimationFrame(() => fitView({ padding: 0.2, duration: 0 }));
+    return () => cancelAnimationFrame(frame);
+  }, [topology, fitView]);
 
   return (
     <ReactFlow
+      colorMode={theme}
       nodes={nodes}
       edges={edges}
       onNodesChange={onNodesChange}
@@ -57,12 +67,11 @@ function GraphCanvas({ steps, definition, selectedStepName, onSelectStep }) {
       nodeTypes={nodeTypes}
       minZoom={0.2}
       maxZoom={1.6}
-      proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable className="rf-minimap" nodeStrokeWidth={2} />
-      <div className="graph-watermark">ORCAS</div>
+
     </ReactFlow>
   );
 }

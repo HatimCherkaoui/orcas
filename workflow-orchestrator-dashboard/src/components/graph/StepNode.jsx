@@ -1,11 +1,13 @@
+import { executionDuration, formatDuration } from '../../utils/format';
+import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { AlertCircle, CheckCircle2, Circle, Clock3, Play, RotateCcw, SkipForward, Zap } from 'lucide-react';
 
 const STATE_META = {
   INIT: { icon: Circle, className: 'init', label: 'Init' },
   STARTED: { icon: Clock3, className: 'started', label: 'Started' },
-  RUNNING: { icon: Play, className: 'running', label: 'Running', pulse: true },
-  RUNNING_ASYNC: { icon: Play, className: 'running', label: 'Running Async', pulse: true },
+  RUNNING: { icon: Play, className: 'running', label: 'Running' },
+  RUNNING_ASYNC: { icon: Play, className: 'running', label: 'Running Async' },
   SUCCESS: { icon: CheckCircle2, className: 'success', label: 'Success' },
   FAILED: { icon: AlertCircle, className: 'failed', label: 'Failed' },
   SUSPENDED: { icon: AlertCircle, className: 'suspended', label: 'Suspended' },
@@ -29,7 +31,7 @@ export function StepNode({ data, selected }) {
   const cbState = step.circuitBreakerState || step.circuitBreaker || stepConfig.circuitBreakerState || (hasCircuitBreaker ? 'CLOSED' : null);
 
   return (
-    <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''} ${meta.pulse ? 'node-pulse' : ''}`}>
+    <div className={`rf-step-node state-${meta.className} ${selected ? 'selected' : ''}`}>
       <Handle type="target" position={Position.Left} />
       
       <div className="rf-step-icon">
@@ -51,7 +53,7 @@ export function StepNode({ data, selected }) {
         </div>
         <div className="rf-step-meta-row">
           <span className="rf-step-state">{meta.label}</span>
-          {step.duration != null && <span className="rf-step-duration mono">{step.duration}ms</span>}
+          {executionDuration(step) != null && <span className="rf-step-duration mono">{formatDuration(executionDuration(step))}</span>}
         </div>
       </div>
 
@@ -70,4 +72,4 @@ export function StepNode({ data, selected }) {
   );
 }
 
-export const nodeTypes = { stepNode: StepNode };
+export const nodeTypes = { stepNode: memo(StepNode) };

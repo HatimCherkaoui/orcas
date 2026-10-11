@@ -1,70 +1,20 @@
-import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal } from 'lucide-react';
 
 export function JsonViewer({ value }) {
   return <pre className="json-viewer">{JSON.stringify(value ?? {}, null, 2)}</pre>;
 }
 
-function Field({ label, placeholder, active, showPlaceholder, icon: Icon, children }) {
-  return (
-    <label className={`field ${active ? 'active' : ''} ${Icon ? 'has-icon' : ''}`}>
-      {Icon && <Icon className="field-icon" size={15} />}
-      {children}
-      <span className="field-label">{label}</span>
-      {placeholder && showPlaceholder && <span className="field-placeholder">{placeholder}</span>}
-    </label>
-  );
+function Field({ label, icon: Icon, children }) {
+  return <label className={`field ${Icon ? 'has-icon' : ''}`}><span className="field-label">{label}</span><span className="field-control">{Icon && <Icon className="field-icon" size={15}/>} {children}</span></label>;
 }
-
 export function TextField({ label, value, onChange, icon, placeholder = 'Search…' }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} icon={icon} active={focused || !!value}>
-      <input
-        value={value}
-        placeholder=""
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      />
-    </Field>
-  );
+  return <Field label={label} icon={icon}><input value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}/></Field>;
 }
-
 export function SelectField({ label, value, onChange, options, placeholder = 'Any state' }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
-      <select
-        className={!value ? 'field-select-empty' : ''}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-    </Field>
-  );
+  return <Field label={label}><select value={value} onChange={(e) => onChange(e.target.value)}><option value="">{placeholder}</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></Field>;
 }
-
-export function DateField({ label, value, onChange, placeholder = 'Pick a date', helperText = 'Format: YYYY-MM-DD' }) {
-  const [focused, setFocused] = useState(false);
-  return (
-    <div className="field-with-helper">
-      <Field label={label} placeholder={placeholder} showPlaceholder={focused && !value} active={focused || !!value}>
-        <input
-          type="date"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        />
-      </Field>
-      {helperText && <div className="field-helper">{helperText}</div>}
-    </div>
-  );
+export function DateField({ label, value, onChange }) {
+  return <Field label={label}><input type="date" value={value} onChange={(e) => onChange(e.target.value)}/></Field>;
 }
 
 export function SearchBox({ value, onChange, label = 'Search', placeholder = 'Search…' }) {
@@ -119,7 +69,7 @@ export function Pagination({ page, totalPages, totalElements, size, onChange, on
       <div className="pagination-controls">
         <label className="page-size">Rows
           <select value={size} onChange={(e) => onSizeChange?.(Number(e.target.value))}>
-            {[8, 10, 12, 16, 20].map((value) => <option key={value} value={value}>{value}</option>)}
+            {[...new Set([8, 10, 12, 16, 20, size])].sort((a, b) => a - b).map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         </label>
         <button className="icon-button compact-icon" disabled={page <= 0} onClick={() => onChange(page - 1)} aria-label="Previous page"><ChevronLeft size={16} /></button>

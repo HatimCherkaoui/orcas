@@ -1,3 +1,6 @@
+import { executionDuration, formatDuration } from '../../utils/format';
+import { copyText } from '../../utils/observability';
+import { useInspector } from '../../hooks/useInspector';
 import { useState, useCallback } from 'react';
 import { X, RotateCcw, ShieldCheck, Clock, Zap, CheckCircle2, Copy, Check } from 'lucide-react';
 import { api } from '../../api';
@@ -17,16 +20,6 @@ const TABS = [
 
 const REPLAYABLE_STATES = ['FAILED', 'SUSPENDED'];
 
-function formatDuration(millis) {
-  if (millis == null) return '—';
-  if (millis < 1000) return `${millis}ms`;
-  const totalSeconds = Math.round(millis / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (!minutes) return `${seconds}s`;
-  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
-}
-
 function formatDateTime(value) {
   return value ? new Date(value).toLocaleString() : '—';
 }
@@ -34,10 +27,10 @@ function formatDateTime(value) {
 /** Small copy-to-clipboard button with a momentary checkmark flash */
 function CopyButton({ value, className = '' }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback((e) => {
+  const handleCopy = useCallback(async (e) => {
     e.stopPropagation();
     const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-    navigator.clipboard?.writeText(text);
+    try { await copyText(text); } catch { return; }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }, [value]);
@@ -63,16 +56,17 @@ function SectionHeader({ label, value }) {
   );
 }
 
-export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onReplayed }) {
+export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onReplayed, refreshInterval = 0 }) {
+  const panelRef = useInspector(onClose);
   const [tab, setTab] = useState('overview');
   const [replaying, setReplaying] = useState(false);
   const [replayError, setReplayError] = useState(null);
   const [replaySuccess, setReplaySuccess] = useState(null);
 
   const stepName = step?.stepName || step?.name || '';
-  const details = useLoad(() => (workflowId && stepName ? api.step(workflowId, stepName) : null), [workflowId, stepName]);
-  const context = useLoad(() => (workflowId && stepName ? api.stepContext(workflowId, stepName) : null), [workflowId, stepName]);
-  const logs = useLoad(() => (workflowId && stepName ? api.stepLogs(workflowId, stepName) : null), [workflowId, stepName]);
+  const details = useLoad(workflowId && stepName ? (options) => api.step(workflowId, stepName, options) : null, [workflowId, stepName], { interval: refreshInterval });
+  const context = useLoad(workflowId && stepName && ['input', 'output'].includes(tab) ? (options) => api.stepContext(workflowId, stepName, options) : null, [workflowId, stepName, ['input', 'output'].includes(tab)], { interval: refreshInterval });
+  const logs = useLoad(workflowId && stepName && (tab === 'logs' || ['FAILED', 'SUSPENDED'].includes(step?.state || step?.status)) ? (options) => api.stepLogs(workflowId, stepName, options) : null, [workflowId, stepName, tab === 'logs', step?.state || step?.status], { interval: refreshInterval });
 
   const retries = Number(step?.retryCount ?? step?.retries ?? details.data?.retryCount ?? 0);
   const state = (step?.state || step?.status || details.data?.state || details.data?.status || 'PENDING').toUpperCase();
@@ -127,7 +121,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
   }
 
   return (
-    <aside className="floating-panel">
+    <aside ref={panelRef} role="region" aria-label="Execution inspector" className="floating-panel">
       <header className="floating-panel-header">
         <div>
           <div className="eyebrow">Step Inspection</div>
@@ -143,7 +137,9 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
       <div className="floating-panel-body">
         {/* ─── Overview ─── */}
-        {tab === 'overview' && (
+        {details.loading && !details.data && ['overview', 'config'].includes(tab) && <Loading message="Loading step details…"/>}
+        {details.error && <ErrorState error={details.error} retry={details.reload}/>}
+        {tab === 'overview' && (!details.loading || details.data) && (
           <div className="panel-overview">
             {['FAILED', 'SUSPENDED'].includes(state) && failureDetails && (
               <section className={`failure-diagnostic ${state === 'FAILED' ? 'is-failed' : 'is-suspended'}`} aria-live="polite">
@@ -160,7 +156,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
             )}
             <dl className="details">
               <dt>Type</dt>
-              <dd className="mono detail-truncate">{step?.typeClassName || 'DefaultStep'}</dd>
+              <dd className="mono detail-truncate" title={step?.typeClassName}>{step?.typeClassName?.split('.').pop() || '—'}</dd>
               <dt>State</dt>
               <dd><StatusBadge value={state} /></dd>
               <dt>Started</dt>
@@ -168,9 +164,9 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
               <dt>Ended</dt>
               <dd>{formatDateTime(step?.dateEnded || step?.endTime)}</dd>
               <dt>Duration</dt>
-              <dd className="mono">{formatDuration(step?.duration)}</dd>
+              <dd className="mono">{formatDuration(executionDuration(details.data || step))}</dd>
               <dt>Parent Step</dt>
-              <dd className="mono">{context.data?.parentStepName || '—'}</dd>
+              <dd className="mono">{details.data?.parentStepName || step?.parentStepName || context.data?.parentStepName || '—'}</dd>
               <dt>Retry Status</dt>
               <dd>
                 <span className={`status ${retries > 0 ? 'status-suspended' : 'status-init'}`}>
@@ -178,11 +174,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
                 </span>
               </dd>
               <dt>Circuit Breaker</dt>
-              <dd>
-                <span className={`status status-${circuitBreakerState === 'CLOSED' ? 'success' : circuitBreakerState === 'HALF_OPEN' ? 'suspended' : 'failed'}`}>
-                  <Zap size={10} strokeWidth={1.8} /> {circuitBreakerState}
-                </span>
-              </dd>
+              <dd>{effectiveConfig.circuitBreakerEnabled ? <span className={`status status-${circuitBreakerState === 'CLOSED' ? 'success' : circuitBreakerState === 'HALF_OPEN' ? 'suspended' : 'failed'}`}><Zap size={10}/>{circuitBreakerState.replace('_', ' ')}</span> : 'Disabled'}</dd>
               <dt>Scheduled Retry</dt>
               <dd>
                 {scheduledRetry ? (
@@ -199,7 +191,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
         )}
 
         {/* ─── Config & Retry ─── */}
-        {tab === 'config' && (
+        {tab === 'config' && (!details.loading || details.data) && (
           <div className="config-panel-container">
             {/* Retry Policy */}
             <div className="config-card">
@@ -303,7 +295,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
         {/* ─── Input ─── */}
         {tab === 'input' && (
-          context.loading ? <Loading message="Loading step input..." /> :
+          context.loading && !context.data ? <Loading message="Loading step input..." /> :
           context.error ? <ErrorState error={context.error} retry={context.reload} /> :
           context.data?.input == null ? (
             <p className="muted-note">No input context recorded for this step.</p>
@@ -317,7 +309,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
         {/* ─── Output ─── */}
         {tab === 'output' && (
-          context.loading ? <Loading message="Loading step output..." /> :
+          context.loading && !context.data ? <Loading message="Loading step output..." /> :
           context.error ? <ErrorState error={context.error} retry={context.reload} /> :
           context.data?.output == null ? (
             <p className="muted-note">No output context recorded for this step.</p>
@@ -331,7 +323,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
 
         {/* ─── Logs ─── */}
         {tab === 'logs' && (
-          logs.loading ? <Loading message="Loading execution logs..." /> :
+          logs.loading && !logs.data ? <Loading message="Loading execution logs..." /> :
           logs.error ? <ErrorState error={logs.error} retry={logs.reload} /> :
           (Array.isArray(logs.data) ? logs.data : logs.data?.content || logs.data?.items || []).length ? (
             <div className="logs">
@@ -355,7 +347,7 @@ export function StepDetailsPanel({ workflowId, step, stepConfig, onClose, onRepl
           {replayError && <div className="inline-notice danger panel-notice">Replay failed: {replayError.message}</div>}
           {replaySuccess && <div className="inline-notice success panel-notice"><CheckCircle2 size={13} /> {replaySuccess}</div>}
           <button className="button primary" onClick={replay} disabled={replaying}>
-            <RotateCcw size={14} strokeWidth={1.8} className={replaying ? 'spin' : ''} />
+            <RotateCcw size={14} strokeWidth={1.8}  />
             {replaying ? 'Retrying…' : state === 'FAILED' ? 'Retry failed step' : 'Replay suspended step'}
           </button>
         </footer>

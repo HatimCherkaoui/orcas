@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import PipelineListPage from './pages/PipelineListPage';
-import WorkflowDetailPage from './pages/WorkflowDetailPage';
-import KafkaPage from './pages/KafkaPage';
+import { Shell } from './components/layout/Shell';
+import { Loading } from './components/common/States';
+
+const WorkflowDetailPage = lazy(() => import('./pages/WorkflowDetailPage'));
+const KafkaPage = lazy(() => import('./pages/KafkaPage'));
 
 function normalizePath(pathname) {
   const path = pathname || '/';
@@ -33,15 +36,11 @@ export default function DashboardApp() {
     return { type: 'detail', workflowId };
   }, [path]);
 
-  if (route.type === 'kafka') {
-    return <KafkaPage navigate={navigate} />;
-  }
-
-  if (route.type === 'detail') {
-    return <WorkflowDetailPage id={route.workflowId} navigate={navigate} />;
-  }
-
-  return <PipelineListPage navigate={navigate} />;
+  return <Shell page={path} navigate={navigate} flush={route.type === 'detail'}>
+    <Suspense fallback={<Loading variant={route.type === 'detail' ? 'graph' : 'table'} message="Opening console…"/>}>
+      {route.type === 'kafka' ? <KafkaPage navigate={navigate} />
+        : route.type === 'detail' ? <WorkflowDetailPage key={route.workflowId} id={route.workflowId} navigate={navigate} />
+        : <PipelineListPage navigate={navigate} />}
+    </Suspense>
+  </Shell>;
 }
-
-

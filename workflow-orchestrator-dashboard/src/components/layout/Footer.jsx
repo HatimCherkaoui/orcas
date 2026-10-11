@@ -1,4 +1,4 @@
-const REPO_URL = 'https://github.com/orcas/workflow-orchestrator';
+const REPO_URL = 'https://github.com/HatimCherkaoui/orcas';
 
 /** Sidebar footer: the Orcas trademark (links out to the GitHub repo) and the current year. */
 export function Footer() {

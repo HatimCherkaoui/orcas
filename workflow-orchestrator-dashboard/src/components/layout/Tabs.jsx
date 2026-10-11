@@ -3,7 +3,7 @@ export function Tabs({ items, active, onChange }) {
   return (
     <div className="tabs">
       {items.map(({ id, label, icon: Icon }) => (
-        <button key={id} className={active === id ? 'active' : ''} onClick={() => onChange(id)}>
+        <button key={id} aria-pressed={active === id} className={active === id ? 'active' : ''} onClick={() => onChange(id)}>
           {Icon && <Icon size={14} />}
           {label}
         </button>

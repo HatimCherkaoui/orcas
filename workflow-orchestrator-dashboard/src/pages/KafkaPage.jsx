@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Activity, Database, Layers3, RefreshCw, Server, TerminalSquare, Users, X } from 'lucide-react';
 import { api } from '../api';
+import { useInspector } from '../hooks/useInspector';
 import { useLoad } from '../hooks/useLoad';
-import { Shell } from '../components/layout/Shell';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card, Loading, Empty, ErrorState } from '../components/common/States';
 import { SearchBox, StatCard, AutoRefresh } from '../components/common/Inputs';
@@ -11,11 +11,13 @@ import { StatusBadge } from '../components/common/StatusBadge';
 export default function KafkaPage({ navigate }) {
   const [autoReload, setAutoReload] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5000);
-  const topics = useLoad(api.topics, [autoReload, refreshInterval], { interval: autoReload ? refreshInterval : 0 });
-  const groups = useLoad(api.consumerGroups, [autoReload, refreshInterval], { interval: autoReload ? refreshInterval : 0 });
+  const topics = useLoad(api.topics, [], { interval: autoReload ? refreshInterval : 0 });
+  const groups = useLoad(api.consumerGroups, [], { interval: autoReload ? refreshInterval : 0 });
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(null);
-  const [detailError, setDetailError] = useState(null);
+  const [selection, setSelected] = useState(null);
+  const detail = useLoad(selection ? (options) => selection.type === 'topic' ? api.topic(selection.name, options) : api.consumerGroup(selection.groupId, options) : null, [selection?.type, selection?.name, selection?.groupId], { interval: autoReload ? refreshInterval : 0 });
+  const selected = selection ? { ...selection, data: detail.data, loading: detail.loading } : null;
+  const panelRef = useInspector(() => setSelected(null), Boolean(selection));
 
   const topicRows = Array.isArray(topics.data) ? topics.data : topics.data?.topics || topics.data?.content || [];
   const groupRows = Array.isArray(groups.data) ? groups.data : groups.data?.groups || groups.data?.content || [];
@@ -23,38 +25,29 @@ export default function KafkaPage({ navigate }) {
   const groupCount = groupRows.length;
   const connectionHealthy = !topics.error && !groups.error;
 
-  async function openTopic(name) {
-    setDetailError(null);
-    try { setSelected({ type: 'topic', loading: true, name }); setSelected({ type: 'topic', data: await api.topic(name), name }); }
-    catch (error) { setSelected(null); setDetailError(error); }
-  }
+  function openTopic(name) { setSelected({ type: 'topic', name }); }
+  function openGroup(groupId) { setSelected({ type: 'group', groupId }); }
 
-  async function openGroup(groupId) {
-    setDetailError(null);
-    try { setSelected({ type: 'group', loading: true, groupId }); setSelected({ type: 'group', data: await api.consumerGroup(groupId), groupId }); }
-    catch (error) { setSelected(null); setDetailError(error); }
-  }
-
-  function refresh() { topics.reload(); groups.reload(); }
+  function refresh() { topics.reload(); groups.reload(); detail.reload(); }
 
   return (
-    <Shell page="/kafka" navigate={navigate}>
+    <>
       <div className="page kafka-page">
         <PageHeader
           eyebrow="Operations / Kafka"
-          title="Kafka runtime"
-          subtitle="Topics, consumer groups and offsets in one compact view."
-          actions={<><AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} /><button className="button" onClick={refresh}><RefreshCw size={15} className={topics.loading || groups.loading ? 'spin' : ''} />Refresh</button></>}
+          title="Kafka"
+          subtitle="Streams, consumers, and committed offsets."
+          actions={<><AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} /><button className="button" onClick={refresh}><RefreshCw size={15} />Refresh</button></>}
         />
 
         <div className="stats-grid">
           <StatCard label="Topics" value={topicRows.length || (topics.loading ? '—' : 0)} icon={Layers3} />
           <StatCard label="Consumer groups" value={groupCount || (groups.loading ? '—' : 0)} icon={Users} />
-          <StatCard label="Connection" value={connectionHealthy ? 'Healthy' : 'Degraded'} icon={Activity} tone={connectionHealthy ? 'success' : 'danger'} />
-          <StatCard label="API base" value={api.baseUrl} icon={Server} />
+          <StatCard label="Connection" value={!topics.data && !groups.data && connectionHealthy ? 'Connecting…' : connectionHealthy ? 'Connected' : 'Unavailable'} icon={Activity} tone={connectionHealthy ? 'success' : 'danger'} />
+          <StatCard label="Refresh" value={autoReload ? `${refreshInterval / 1000} seconds` : 'Paused'} icon={Server} />
         </div>
 
-        {detailError && <div className="inline-notice danger"><X size={14} /> {detailError.message}</div>}
+        {(topics.error || groups.error) && (topics.data || groups.data) && <div className="inline-notice danger" role="alert">Some Kafka data could not refresh. Showing the last loaded data.</div>}
 
         <div className="kafka-layout">
           <Card className="kafka-list">
@@ -86,17 +79,18 @@ export default function KafkaPage({ navigate }) {
           </Card>
         </div>
 
-        {selected && <aside className="floating-panel kafka-floating">
+        {selected && <aside ref={panelRef} role="region" aria-label="Kafka inspector" className="floating-panel kafka-floating">
           <header className="floating-panel-header">
             <div><div className="eyebrow">{selected.type === 'topic' ? 'Topic' : 'Consumer group'}</div><h2 className="mono">{selected.name || selected.groupId}</h2></div>
             {selected.data && selected.type === 'group' && <StatusBadge value={selected.data.state} />}
             <button className="icon-button" onClick={() => setSelected(null)} aria-label="Close"><X size={16} /></button>
           </header>
           <div className="floating-panel-body">
-            {selected.loading ? <Loading /> : selected.type === 'topic' ? <div className="stats-grid compact"><StatCard label="Partitions" value={selected.data?.partitions ?? '—'} icon={Layers3} /><StatCard label="Replication" value={selected.data?.replicationFactor ?? '—'} icon={Database} /></div> : Object.entries(selected.data?.offsets || {}).length ? Object.entries(selected.data.offsets).map(([key, value]) => <div className="kv-row" key={key}><strong className="mono" title={key}>{key}</strong><span>{value}</span></div>) : <p className="muted-note">No offsets recorded for this group.</p>}
+            {detail.error && selected.data && <div className="inline-notice danger" role="alert">Refresh failed. Showing the last loaded data.</div>}
+            {selected.loading && !selected.data ? <Loading /> : detail.error && !selected.data ? <ErrorState error={detail.error} retry={detail.reload} /> : selected.type === 'topic' ? <div className="stats-grid compact"><StatCard label="Partitions" value={selected.data?.partitions ?? '—'} icon={Layers3} /><StatCard label="Replication" value={selected.data?.replicationFactor ?? '—'} icon={Database} /></div> : Object.entries(selected.data?.offsets || {}).length ? Object.entries(selected.data.offsets).map(([key, value]) => <div className="kv-row" key={key}><strong className="mono" title={key}>{key}</strong><span>{value}</span></div>) : <p className="muted-note">No offsets recorded for this group.</p>}
           </div>
         </aside>}
       </div>
-    </Shell>
+    </>
   );
 }

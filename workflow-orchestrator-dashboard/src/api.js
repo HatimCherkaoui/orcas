@@ -38,6 +38,7 @@ async function request(path, options = {}) {
   let response;
   try {
     response = await fetch(url, {
+      ...options,
       headers: {
         Accept: 'application/json',
         'X-Request-ID': newIdentifier(),
@@ -46,9 +47,9 @@ async function request(path, options = {}) {
         ...(options.body != null ? { 'Content-Type': 'application/json' } : {}),
         ...(options.headers || {}),
       },
-      ...options,
     });
   } catch (cause) {
+    if (cause.name === 'AbortError') throw cause;
     const error = new Error(`Cannot reach the workflow service at ${API_BASE}`);
     error.cause = cause;
     error.endpoint = url;
@@ -76,19 +77,19 @@ function encode(value) {
 
 export const api = {
   baseUrl: API_BASE,
-  workflows: (filters = {}) => {
+  workflows: (filters = {}, options = {}) => {
     const qs = query(filters);
-    return request(`/workflows${qs ? `?${qs}` : ''}`);
+    return request(`/workflows${qs ? `?${qs}` : ''}`, options);
   },
-  workflow: (workflowId) => request(`/workflows/${encode(workflowId)}`),
-  definition: (workflow) => request(`/workflows/definitions/${encode(workflow)}`),
-  steps: (workflowId) => request(`/workflows/${encode(workflowId)}/steps`),
-  step: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}`),
-  stepContext: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/context`),
-  context: (workflowId) => request(`/workflows/${encode(workflowId)}/context`),
-  metadata: (workflowId) => request(`/workflows/${encode(workflowId)}/metadata`),
-  workflowLogs: (workflowId) => request(`/workflows/${encode(workflowId)}/logs`),
-  stepLogs: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/logs`),
+  workflow: (workflowId, options = {}) => request(`/workflows/${encode(workflowId)}`, options),
+  definition: (workflow, options = {}) => request(`/workflows/definitions/${encode(workflow)}`, options),
+  steps: (workflowId, options = {}) => request(`/workflows/${encode(workflowId)}/steps`, options),
+  step: (workflowId, stepName, options = {}) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}`, options),
+  stepContext: (workflowId, stepName, options = {}) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/context`, options),
+  context: (workflowId, options = {}) => request(`/workflows/${encode(workflowId)}/context`, options),
+  metadata: (workflowId, options = {}) => request(`/workflows/${encode(workflowId)}/metadata`, options),
+  workflowLogs: (workflowId, options = {}) => request(`/workflows/${encode(workflowId)}/logs`, options),
+  stepLogs: (workflowId, stepName, options = {}) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/logs`, options),
   replayStep: (workflowId, stepName) => request(`/workflows/${encode(workflowId)}/steps/${encode(stepName)}/replay`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -97,8 +98,8 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(filters),
   }),
-  topics: () => request('/kafka/topics'),
-  topic: (name) => request(`/kafka/topics/${encode(name)}`),
-  consumerGroups: () => request('/kafka/consumer-groups'),
-  consumerGroup: (groupId) => request(`/kafka/consumer-groups/${encode(groupId)}`),
+  topics: (options = {}) => request('/kafka/topics', options),
+  topic: (name, options = {}) => request(`/kafka/topics/${encode(name)}`, options),
+  consumerGroups: (options = {}) => request('/kafka/consumer-groups', options),
+  consumerGroup: (groupId, options = {}) => request(`/kafka/consumer-groups/${encode(groupId)}`, options),
 };

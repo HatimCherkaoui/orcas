@@ -1,52 +1,44 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-/**
- * Small async resource hook. It keeps the last successful value while refreshing,
- * which prevents dashboard flicker and makes polling feel instantaneous.
- */
-export function useLoad(loader, deps = [], options = {}) {
-  const { keepData = true, interval = 0 } = options;
-  const requestId = useRef(0);
-  const [state, setState] = useState({ loading: Boolean(loader), data: null, error: null });
-
+/** One request at a time. Poll after completion and pause in background tabs. */
+export function useLoad(loader, deps = [], { keepData = true, interval = 0 } = {}) {
+  const loaderRef = useRef(loader);
+  loaderRef.current = loader;
+  const enabled = Boolean(loader);
+  const resource = useMemo(() => ({}), deps);
+  const active = useRef(null);
+  const currentResource = useRef(resource);
+  currentResource.current = resource;
+  const [state, setState] = useState({ loading: enabled, data: null, error: null, resource });
   const load = useCallback(() => {
-    if (!loader) {
-      setState({ loading: false, data: null, error: null });
-      return () => {};
-    }
-
-    const id = ++requestId.current;
-    setState((current) => ({
-      loading: true,
-      data: keepData ? current.data : null,
-      error: null,
-    }));
-
-    Promise.resolve()
-      .then(loader)
-      .then((data) => {
-        if (id === requestId.current) setState({ loading: false, data, error: null });
-      })
-      .catch((error) => {
-        if (id === requestId.current) setState((current) => ({ loading: false, data: keepData ? current.data : null, error }));
-      });
-
-    return () => {
-      requestId.current += 1;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-
+    if (!loaderRef.current || active.current) return active.current?.promise || Promise.resolve();
+    const controller = new AbortController();
+    const request = { controller, resource, promise: null };
+    active.current = request;
+    setState((s) => ({ loading: true, data: keepData && s.resource === resource ? s.data : null, error: null, resource }));
+    const fetchResource = loaderRef.current;
+    request.promise = Promise.resolve().then(() => controller.signal.aborted ? null : fetchResource({ signal: controller.signal }))
+      .then((data) => { if (!controller.signal.aborted && currentResource.current === resource) setState({ loading: false, data, error: null, resource }); })
+      .catch((error) => { if (!controller.signal.aborted && currentResource.current === resource) setState((s) => ({ loading: false, data: keepData ? s.data : null, error, resource })); })
+      .finally(() => { if (active.current === request) active.current = null; });
+    return request.promise;
+  }, [resource, keepData]);
   useEffect(() => {
-    const cancel = load();
-    return cancel;
-  }, [load]);
-
+    if (!enabled) { setState({ loading: false, data: null, error: null, resource }); return; }
+    load();
+    return () => { active.current?.controller.abort(); active.current = null; };
+  }, [load, enabled, resource]);
   useEffect(() => {
-    if (!loader || !interval) return undefined;
-    const timer = window.setInterval(load, interval);
-    return () => window.clearInterval(timer);
-  }, [loader, interval, load]);
-
-  return { ...state, reload: load };
+    if (!enabled || !interval) return;
+    let timer;
+    let disposed = false;
+    const schedule = () => { clearTimeout(timer); if (!disposed && !document.hidden) timer = window.setTimeout(tick, interval); };
+    const tick = async () => { if (document.hidden) return; await load(); schedule(); };
+    const visibility = () => { clearTimeout(timer); if (!document.hidden) tick(); };
+    // Initial loading is already in flight; schedule the next poll after it settles.
+    Promise.resolve(active.current?.promise).then(schedule);
+    document.addEventListener('visibilitychange', visibility);
+    return () => { disposed = true; clearTimeout(timer); document.removeEventListener('visibilitychange', visibility); };
+  }, [enabled, interval, load]);
+  return { ...(state.resource === resource ? state : { loading: enabled, data: null, error: null }), reload: load };
 }

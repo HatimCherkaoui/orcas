@@ -10,7 +10,6 @@ import { WorkflowGraph } from '../components/graph/WorkflowGraph';
 import { StepDetailsPanel } from '../components/graph/StepDetailsPanel';
 import { WorkflowInfoPanel } from '../components/graph/WorkflowInfoPanel';
 import { ExecutionIdentifiers } from '../components/common/ExecutionIdentifiers';
-import { Shell } from '../components/layout/Shell';
 
 const INFO_TABS = [
   { id: 'context', label: 'Context', icon: FileText },
@@ -21,21 +20,22 @@ const INFO_TABS = [
 
 export default function WorkflowDetailPage({ id, navigate }) {
   const workflowId = id && id !== 'undefined' ? id : null;
-  const [selectedStep, setSelectedStep] = useState(null);
+  const [selectedStepName, setSelectedStep] = useState(null);
   const [autoReload, setAutoReload] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(5000);
   const [infoTab, setInfoTab] = useState(null);
 
-  const workflow = useLoad(() => (workflowId ? api.workflow(workflowId) : null), [workflowId], { interval: autoReload ? refreshInterval : 0 });
-  const steps = useLoad(() => (workflowId ? api.steps(workflowId) : null), [workflowId], { interval: autoReload ? refreshInterval : 0 });
+  const workflow = useLoad(workflowId ? (options) => api.workflow(workflowId, options) : null, [workflowId], { interval: autoReload ? refreshInterval : 0 });
+  const steps = useLoad(workflowId ? (options) => api.steps(workflowId, options) : null, [workflowId], { interval: autoReload ? refreshInterval : 0 });
   const workflowName = workflow.data?.workflow || workflow.data?.workflowName || workflowId;
-  const definition = useLoad(() => (workflowName && workflowName !== workflowId ? api.definition(workflowName) : null), [workflowName]);
-  const context = useLoad(() => (workflowId ? api.context(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
-  const metadata = useLoad(() => (workflowId ? api.metadata(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
-  const auditLog = useLoad(() => (workflowId ? api.workflowLogs(workflowId) : null), [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
+  const definition = useLoad(workflowName && workflowName !== workflowId ? (options) => api.definition(workflowName, options) : null, [workflowName]);
+  const context = useLoad(workflowId && infoTab === 'context' ? (options) => api.context(workflowId, options) : null, [workflowId, infoTab === 'context'], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
+  const metadata = useLoad(workflowId ? (options) => api.metadata(workflowId, options) : null, [workflowId], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
+  const auditLog = useLoad(workflowId && infoTab === 'logs' ? (options) => api.workflowLogs(workflowId, options) : null, [workflowId, infoTab === 'logs'], { interval: autoReload ? Math.max(refreshInterval, 7000) : 0 });
 
   const stepRows = Array.isArray(steps.data) ? steps.data : steps.data?.content || steps.data?.items || [];
   const stepConfigs = definition.data?.stepConfigs || {};
+  const selectedStep = stepRows.find((step) => (step.stepName || step.name) === selectedStepName) || (selectedStepName ? { stepName: selectedStepName, state: 'PENDING' } : null);
 
   const infoLoads = useMemo(
     () => ({
@@ -67,7 +67,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
   }
 
   function selectStep(step) {
-    setSelectedStep(step);
+    setSelectedStep(step?.stepName || step?.name || null);
     if (step) setInfoTab(null);
   }
 
@@ -78,7 +78,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
 
   if (!workflowId) {
     return (
-      <Shell page="/" navigate={navigate} flush>
+      <>
       <div className="graph-page">
         <div className="graph-empty">
           <Empty
@@ -88,14 +88,14 @@ export default function WorkflowDetailPage({ id, navigate }) {
           <button className="button" onClick={() => navigate('/')}>Back to workflows</button>
         </div>
       </div>
-      </Shell>
+      </>
     );
   }
 
   const activeInfoTab = INFO_TABS.find((tab) => tab.id === infoTab) || null;
 
   return (
-    <Shell page="/" navigate={navigate} flush>
+    <>
     <div className="graph-page">
       <header className="graph-topbar">
         <div className="graph-topbar-title">
@@ -112,17 +112,18 @@ export default function WorkflowDetailPage({ id, navigate }) {
           <Tabs items={INFO_TABS} active={infoTab} onChange={openInfoTab} />
           <AutoRefresh enabled={autoReload} onEnabledChange={setAutoReload} interval={refreshInterval} onIntervalChange={setRefreshInterval} />
           <button className="button" onClick={refresh}>
-            <RefreshCw size={15} className={workflow.loading || steps.loading ? 'spin' : ''} />
+            <RefreshCw size={15} />
             Refresh
           </button>
         </div>
       </header>
 
       <ExecutionIdentifiers compact identifiers={metadata.data?.identifiers || Object.fromEntries(Object.entries(metadata.data?.values || {}).filter(([key]) => /^(requestId|correlationId|transactionId|traceId)$/.test(key)))} workflowId={workflowId} />
+      {(workflow.error || steps.error || definition.error) && workflow.data && <div className="inline-notice danger" role="alert">Some execution data could not refresh. Showing the last loaded data.</div>}
       <div className="graph-stage">
         {(!workflow.data && workflow.loading) || (!steps.data && steps.loading) ? (
-          <Loading />
-        ) : workflow.error ? (
+          <Loading variant="graph" rows={4} />
+        ) : workflow.error && !workflow.data ? (
           <ErrorState error={workflow.error} retry={workflow.reload} />
         ) : (
           <WorkflowGraph
@@ -135,6 +136,8 @@ export default function WorkflowDetailPage({ id, navigate }) {
 
         {selectedStep && (
           <StepDetailsPanel
+            key={selectedStepName}
+            refreshInterval={autoReload ? refreshInterval : 0}
             workflowId={workflowId}
             step={selectedStep}
             stepConfig={stepConfigs[selectedStep.stepName]}
@@ -154,7 +157,7 @@ export default function WorkflowDetailPage({ id, navigate }) {
         )}
       </div>
     </div>
-    </Shell>
+    </>
   );
 }
 

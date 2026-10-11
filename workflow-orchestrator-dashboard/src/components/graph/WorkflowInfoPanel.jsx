@@ -1,3 +1,5 @@
+import { copyText } from '../../utils/observability';
+import { useInspector } from '../../hooks/useInspector';
 import { useState, useCallback } from 'react';
 import { X, ShieldCheck, Layers, GitBranch, RotateCcw, Copy, Check } from 'lucide-react';
 import { Loading, ErrorState, Empty } from '../common/States';
@@ -7,10 +9,10 @@ import { JsonViewer } from '../common/Inputs';
 /** Copy button with momentary flash */
 function CopyButton({ value }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback((e) => {
+  const handleCopy = useCallback(async (e) => {
     e.stopPropagation();
     const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-    navigator.clipboard?.writeText(text);
+    try { await copyText(text); } catch { return; }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   }, [value]);
@@ -35,8 +37,9 @@ function SectionHeader({ label, value }) {
  * Floating card showing workflow-level data (context, metadata, audit trail, or configuration).
  */
 export function WorkflowInfoPanel({ tabId, title, subtitle, load, onClose }) {
+  const panelRef = useInspector(onClose);
   return (
-    <aside className="floating-panel">
+    <aside ref={panelRef} role="region" aria-label="Execution inspector" className="floating-panel">
       <header className="floating-panel-header">
         <div>
           <div className="eyebrow">{subtitle}</div>
@@ -48,9 +51,10 @@ export function WorkflowInfoPanel({ tabId, title, subtitle, load, onClose }) {
       </header>
 
       <div className="floating-panel-body">
-        {load.loading ? (
+        {load.error && load.data != null && <div className="inline-notice danger" role="alert">Refresh failed. Showing the last loaded data.</div>}
+        {load.loading && load.data == null ? (
           <Loading message={`Loading ${title.toLowerCase()}...`} />
-        ) : load.error ? (
+        ) : load.error && load.data == null ? (
           <ErrorState error={load.error} retry={load.reload} />
         ) : tabId === 'logs' ? (
           <AuditLogList logs={load.data} />

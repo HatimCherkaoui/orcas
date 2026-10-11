@@ -21,7 +21,7 @@ export function StatusBadge({ value }) {
   return (
     <span className={`status status-${status.toLowerCase()}`}>
       <Icon size={13} />
-      {status.replace(/_/g, ' ')}
+      {status.toLowerCase().replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase())}
     </span>
   );
 }
