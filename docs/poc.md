@@ -1,6 +1,6 @@
 # First POC
 
-The development version is `0.6.0-SNAPSHOT`. This POC exercises the workflow runtime,
+The first release candidate is `0.6.0`. This POC exercises the workflow runtime,
 persisted dashboard state, manual replay, transient retries and circuit breaker recovery.
 
 ## Build and package

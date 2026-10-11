@@ -63,7 +63,7 @@ Use the BOM to keep versions aligned:
         <dependency>
             <groupId>io.github.hatimcherkaoui</groupId>
             <artifactId>workflow-orchestrator-bom</artifactId>
-            <version>0.6.0-SNAPSHOT</version>
+            <version>0.6.0</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -212,8 +212,8 @@ the parent, BOM and library modules for Maven publication. Applications are excl
 that reactor and also have deployment disabled.
 
 Maven coordinates use `io.github.hatimcherkaoui`; Java imports continue to use
-`com.github.orcas`. The current `0.6.0-SNAPSHOT` is a development POC, not a published
-Maven Central release. Install it locally with `mvn install` before using the BOM example.
+`com.github.orcas`. Version `0.6.0` is the first release candidate. Check [Maven Central](https://central.sonatype.com/namespace/io.github.hatimcherkaoui)
+for publication availability; install locally with `mvn install` until the release is published.
 
 ## Correlation and observability
 

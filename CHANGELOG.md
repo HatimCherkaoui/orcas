@@ -1,8 +1,15 @@
 # Changelog
 
-## 0.6.0-SNAPSHOT — first POC
+## 0.6.0 — first release candidate
 
 This development POC reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
+
+### Release verification and security
+
+- Prepare version 0.6.0 with reproducible archives and an audit of all 23 Maven Central components.
+- Gate publication on tests, source analysis, resolved dependency vulnerabilities, full-history secret scanning and signature verification.
+- Upgrade vulnerable Jackson, Tomcat, LZ4 and frontend build dependencies.
+- Provide a credential-separated Maven Central publication workflow that waits for confirmed publication.
 
 ### Execution correlation and observability
 
@@ -44,7 +51,7 @@ Move feature-specific APIs to their feature modules:
 
 Applications using Spring Boot should depend on the feature starter that matches the feature they use instead of the historical monolithic starter.
 
-## 0.6.0 - management auto-configuration routing fix
+### Management auto-configuration routing fix
 
 - Simplified `ManagementServiceApplication` to rely on Spring Boot auto-configuration metadata instead of manually importing orchestrator auto-configurations.
 - Made the workflow service auto-configuration activate only when its JDBC infrastructure is present, with service/controller beans created from required dependencies rather than bean-order-sensitive `@ConditionalOnBean` method conditions.

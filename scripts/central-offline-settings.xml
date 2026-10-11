@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Only for the offline CI publisher fixture with a loopback URL.
+     The plugin uses this server record for its synthetic upload. These values
+     are synthetic placeholders and cannot authenticate to any registry. -->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+    <servers>
+        <server>
+            <id>central</id>
+            <username>offline</username>
+            <password>offline</password>
+        </server>
+    </servers>
+</settings>
