@@ -48,7 +48,7 @@ jobs:
           gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key 'Orcas CI verification <ci@example.invalid>' rsa3072 sign 1d
           mvn --batch-mode --no-transfer-progress -Drelease -DskipTests verify
           python3 scripts/verify-central-artifacts.py --signed
-          mvn --batch-mode --no-transfer-progress --settings scripts/central-offline-settings.xml -Drelease -DskipTests -Dcentral.skipPublishing=true -Dcentral.baseUrl=http://127.0.0.1:9 deploy
+          python3 scripts/verify-central-publisher.py
           python3 scripts/verify-central-bundle.py
           python3 scripts/verify-consumer.py
           gpgconf --kill gpg-agent
@@ -116,7 +116,7 @@ jobs:
       - name: Initialize source security analysis
         uses: github/codeql-action/init@f3c49fd1ef3281abc41069b3dd22807a60c963f6 # v4
         with:
-          languages: java-kotlin,javascript-typescript,actions
+          languages: java-kotlin,javascript-typescript,python,actions
           queries: security-extended
       - name: Compile all production source for Java analysis
         run: mvn --batch-mode --no-transfer-progress -Dmaven.test.skip=true clean package

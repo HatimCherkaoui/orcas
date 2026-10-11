@@ -76,9 +76,11 @@ Archive timestamps are fixed by `project.build.outputTimestamp` for reproducible
 - Maven unit and Testcontainers integration tests, including the observability stack.
 - Module boundaries, frontend tests/build, publication audit and POC packaging.
 - Actual Maven GPG signing with an ephemeral CI key (never used for publication).
-- Offline Central bundle/signature/checksum validation and external Maven consumer
-  compilation against installed release POMs, including security version propagation.
-- CodeQL security-extended analysis for Java, JavaScript and GitHub Actions. Security
+- Real Central plugin upload/status verification against a loopback-only synthetic
+  Portal fixture (no real registry upload), bundle/signature/checksum validation,
+  and external Maven consumer compilation against installed release POMs, including
+  security version propagation.
+- CodeQL security-extended analysis for Java, JavaScript, Python and GitHub Actions. Security
   findings fail the job; generating/uploading a report alone does not pass the gate.
 - CycloneDX inventory of resolved direct/transitive Maven dependencies, including
   test and application dependencies, scanned with OSV together with the npm lockfile.

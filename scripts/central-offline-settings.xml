@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Only for offline CI bundling with skipPublishing=true and a loopback URL.
-     The plugin requires a server record even without an upload. These values
+<!-- Only for the offline CI publisher fixture with a loopback URL.
+     The plugin uses this server record for its synthetic upload. These values
      are synthetic placeholders and cannot authenticate to any registry. -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
     <servers>

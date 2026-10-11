@@ -6,7 +6,7 @@ Do not include live credentials or personal workflow data in public issues.
 
 ## Release checks
 
-CI scans Java, JavaScript and GitHub Actions source with CodeQL, resolved Maven and
+CI scans Java, JavaScript, Python and GitHub Actions source with CodeQL, resolved Maven and
 npm dependencies with OSV, and full Git history with Gitleaks. The release workflow
 requires every test, artifact audit and security gate to pass before signing and
 publishing. See [Publishing](PUBLISHING.md) for the exact coverage and prerequisites.
