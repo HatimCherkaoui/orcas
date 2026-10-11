@@ -89,6 +89,10 @@ Archive timestamps are fixed by `project.build.outputTimestamp` for reproducible
 - Gitleaks over the full Git history. Only exact historical demo-password fingerprints
   and Compose's `ELASTIC_PASSWORD` variable references are exempted; new literal secrets fail.
 
+CI and publishing use checksum-verified Maven 3.9.11. Maven 3.10 is rejected because
+Central plugin 0.11.0 includes local repository bookkeeping in its staging bundle
+with that runtime.
+
 Actions are pinned to upstream commits; scanner downloads use fixed versions and SHA-256
 checksums. Redacted secret reports, dependency reports/SBOM and CodeQL SARIF reports are
 retained as CI artifacts. Scans reflect the databases and queries available at run time;

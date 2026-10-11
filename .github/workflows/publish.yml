@@ -44,6 +44,7 @@ jobs:
           server-password: CENTRAL_TOKEN_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - uses: ./.github/actions/setup-maven
       - name: Build and verify signed library artifacts
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
