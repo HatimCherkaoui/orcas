@@ -70,6 +70,7 @@
         <central.autoPublish>false</central.autoPublish>
         <central.waitUntil>validated</central.waitUntil>
         <central.skipPublishing>false</central.skipPublishing>
+        <central.baseUrl>https://central.sonatype.com</central.baseUrl>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -458,6 +459,7 @@
                             <autoPublish>${central.autoPublish}</autoPublish>
                             <waitUntil>${central.waitUntil}</waitUntil>
                             <skipPublishing>${central.skipPublishing}</skipPublishing>
+                            <centralBaseUrl>${central.baseUrl}</centralBaseUrl>
                         </configuration>
                     </plugin>
                 </plugins>
