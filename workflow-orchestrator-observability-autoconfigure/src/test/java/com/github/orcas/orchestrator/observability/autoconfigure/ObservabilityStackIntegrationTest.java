@@ -54,6 +54,9 @@ class ObservabilityStackIntegrationTest {
                      .withEnv("ES_JAVA_OPTS","-Xms512m -Xmx512m").waitingFor(Wait.forHttp("/_cluster/health").forPort(9200)).withStartupTimeout(Duration.ofMinutes(3));
              var collector = new GenericContainer<>("otel/opentelemetry-collector-contrib:0.123.0")
                      .withNetwork(network).withExposedPorts(4318,13133).withEnv("ELASTIC_PASSWORD","unused")
+                     // Compose initializes its persistent volume for UID 10001. This
+                     // isolated test needs the same writable directory without root.
+                     .withTmpFs(Map.of("/var/lib/otelcol","rw,size=64m,uid=10001,gid=10001,mode=0700"))
                      .withCopyFileToContainer(MountableFile.forHostPath(ROOT.resolve("otel-collector-config.yaml")),"/etc/otelcol-contrib/config.yaml")
                      .waitingFor(Wait.forHttp("/").forPort(13133)).withStartupTimeout(Duration.ofMinutes(2));
              var kibana = new GenericContainer<>("docker.elastic.co/kibana/kibana:8.15.0")
@@ -65,6 +68,7 @@ class ObservabilityStackIntegrationTest {
             request("PUT",elastic+"/_ingest/pipeline/orcas-correlation",Files.readString(ROOT.resolve("observability/elasticsearch-pipeline.json")),"application/json");
             request("PUT",elastic+"/_index_template/orcas-observability",Files.readString(ROOT.resolve("observability/elasticsearch-template.json")),"application/json");
             collector.start();
+            assertThat(collector.getContainerInfo().getConfig().getUser()).isEqualTo("10001:10001");
             String endpoint = "http://"+collector.getHost()+":"+collector.getMappedPort(4318);
             var resource = Resource.create(Attributes.of(AttributeKey.stringKey("service.name"),"observability-contract"));
             try (var tracer = SdkTracerProvider.builder().setResource(resource).addSpanProcessor(SimpleSpanProcessor.create(OtlpHttpSpanExporter.builder().setEndpoint(endpoint+"/v1/traces").build())).build();
