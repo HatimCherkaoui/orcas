@@ -22,6 +22,12 @@ public interface WorkflowStateStore {
 
     void updateContext(String workflowId, WorkflowContext context);
 
+    /** Persist a step snapshot and its resulting context together when supported. */
+    default void saveStepResult(StepContext step, WorkflowContext context) {
+        saveStepContext(step);
+        updateContext(step.workflowId(), context);
+    }
+
     void finish(StatusEvent event);
 
     /** Persistent start time for end-to-end latency; custom stores may opt in. */

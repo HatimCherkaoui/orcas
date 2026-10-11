@@ -25,8 +25,10 @@ public final class WorkflowObservabilityAutoConfiguration {
     @Bean
     @org.springframework.boot.autoconfigure.condition.ConditionalOnClass(javax.sql.DataSource.class)
     @ConditionalOnProperty(prefix = "workflow.orchestrator.observability",name = "jdbc",havingValue = "true",matchIfMissing = true)
-    static WorkflowJdbcTelemetryPostProcessor workflowJdbcTelemetry(org.springframework.beans.factory.ObjectProvider<com.github.orcas.orchestrator.core.engine.WorkflowTelemetry> telemetry) {
-        return new WorkflowJdbcTelemetryPostProcessor(telemetry);
+    static WorkflowJdbcTelemetryPostProcessor workflowJdbcTelemetry(org.springframework.beans.factory.ObjectProvider<com.github.orcas.orchestrator.core.engine.WorkflowTelemetry> telemetry,
+            org.springframework.core.env.Environment environment) {
+        return new WorkflowJdbcTelemetryPostProcessor(telemetry,
+                environment.getProperty("workflow.orchestrator.observability.jdbc-connection-spans", Boolean.class, false));
     }
 
     @org.springframework.context.annotation.Configuration(proxyBeanMethods = false)

@@ -13,17 +13,26 @@ final class JdbcTransactionRunner {
     private static final long BASE_DELAY_MILLIS = 20L;
 
     private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate participatingTemplate;
     private final Logger log;
 
     JdbcTransactionRunner(PlatformTransactionManager transactionManager, Logger log) {
-        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this(transactionManager, transactionManager, log);
+    }
+
+    JdbcTransactionRunner(PlatformTransactionManager localManager,
+                          PlatformTransactionManager applicationManager, Logger log) {
+        this.transactionTemplate = new TransactionTemplate(localManager);
+        this.participatingTemplate = new TransactionTemplate(applicationManager);
         this.log = log;
     }
 
     void execute(Runnable operation) {
+        var template = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                ? participatingTemplate : transactionTemplate;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                transactionTemplate.executeWithoutResult(status -> operation.run());
+                template.executeWithoutResult(status -> operation.run());
                 return;
             } catch (ConcurrencyFailureException error) {
                 if (attempt == MAX_ATTEMPTS) {

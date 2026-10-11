@@ -11,10 +11,26 @@ processors:
     limit_mib: 192
     spike_limit_mib: 48
   cumulativetodelta:
+  transform/timer_summaries:
+    # Micrometer timers without percentile buckets still contain count and sum.
+    # Preserve these as aggregate metrics instead of rejecting their histograms.
+    error_mode: propagate
+    metric_statements:
+      - context: datapoint
+        statements:
+          - 'set(attributes["elasticsearch.mapping.hints"], ["aggregate_metric_double"]) where metric.type == METRIC_DATA_TYPE_HISTOGRAM and Len(explicit_bounds) == 0'
+  filter/empty_metrics:
+    # Micrometer emits empty idle histograms and NaN gauges. They represent no
+    # observations and cannot be indexed; keep all populated, finite points.
+    error_mode: propagate
+    metrics:
+      datapoint:
+        - '(metric.type == METRIC_DATA_TYPE_HISTOGRAM or metric.type == METRIC_DATA_TYPE_EXPONENTIAL_HISTOGRAM) and count == 0'
+        - '(metric.type == METRIC_DATA_TYPE_GAUGE or metric.type == METRIC_DATA_TYPE_SUM) and (value_double != value_double or value_double > 1.7976931348623157e308 or value_double < -1.7976931348623157e308)'
   batch:
-    timeout: 1s
-    send_batch_size: 256
-    send_batch_max_size: 512
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
 exporters:
   elasticsearch:
     endpoints: ["http://elasticsearch:9200"]
@@ -23,20 +39,31 @@ exporters:
     pipeline: orcas-correlation
     traces_index: traces-orcas-default
     logs_index: logs-orcas-default
-    metrics_index: metrics-orcas-default
+    metrics_index: metrics-orcas-runtime
     mapping:
       mode: ecs
+    # Explicit synchronous export removes the legacy five-second buffer handoff
+    # timeout. Persist bounded batches while Elasticsearch is temporarily busy.
+    timeout: 90s
+    batcher:
+      enabled: false
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 128
+      storage: file_storage
     num_workers: 2
-    flush:
-      interval: 1s
     retry:
       enabled: true
       max_retries: 5
 extensions:
+  file_storage:
+    directory: /var/lib/otelcol
+    create_directory: true
   health_check:
     endpoint: 0.0.0.0:13133
 service:
-  extensions: [health_check]
+  extensions: [health_check, file_storage]
   pipelines:
     traces:
       receivers: [otlp]
@@ -44,7 +71,7 @@ service:
       exporters: [elasticsearch]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, cumulativetodelta, batch]
+      processors: [memory_limiter, cumulativetodelta, transform/timer_summaries, filter/empty_metrics, batch]
       exporters: [elasticsearch]
     logs:
       receivers: [otlp]

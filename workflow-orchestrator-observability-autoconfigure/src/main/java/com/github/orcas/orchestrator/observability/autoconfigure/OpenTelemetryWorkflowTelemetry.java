@@ -52,22 +52,23 @@ public final class OpenTelemetryWorkflowTelemetry implements WorkflowTelemetry {
                 parent = Context.root().with(Span.wrap(SpanContext.createFromRemoteParent(tp.substring(3,35), tp.substring(36,52), TraceFlags.getSampled(), TraceState.getDefault())));
             }
         }
+        var identifiers = metadata.identifiers();
         var span = tracer.spanBuilder(name).setParent(parent).startSpan();
         span.setAttribute("eventType", type);
-        metadata.identifiers().forEach(span::setAttribute);
-        span.setAttribute(io.opentelemetry.api.common.AttributeKey.stringArrayKey("identifierKeys"), new java.util.ArrayList<>(metadata.identifiers().keySet()));
+        identifiers.forEach(span::setAttribute);
+        span.setAttribute(io.opentelemetry.api.common.AttributeKey.stringArrayKey("identifierKeys"), new java.util.ArrayList<>(identifiers.keySet()));
         resolved.forEach(span::setAttribute);
         span.setAttribute("operation", name);
         var baggage = io.opentelemetry.api.baggage.Baggage.builder();
         if (workflowName != null) baggage.put("workflow", workflowName);
-        metadata.identifiers().forEach((key,value) -> { if (CorrelationIdentifiers.keys().contains(key)) baggage.put(key,value); });
+        identifiers.forEach((key,value) -> { if (CorrelationIdentifiers.keys().contains(key)) baggage.put(key,value); });
         var scope = parent.with(baggage.build()).with(span).makeCurrent();
         Map<String,String> previous = MDC.getCopyOfContextMap();
         if (mdc) {
-        metadata.identifiers().forEach(MDC::put);
+        identifiers.forEach(MDC::put);
         resolved.forEach(MDC::put);
         MDC.put("eventType", type);
-        MDC.put("identifierKeys",String.join(",",metadata.identifiers().keySet()));
+        MDC.put("identifierKeys",String.join(",",identifiers.keySet()));
         if (span.getSpanContext().isValid()) { MDC.put("spanId",span.getSpanContext().getSpanId()); MDC.put("traceId",span.getSpanContext().getTraceId()); }
         }
         long started = System.nanoTime();

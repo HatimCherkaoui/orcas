@@ -12,6 +12,9 @@ import java.util.Map;
 @ConfigurationProperties("workflow.orchestrator.rest-client")
 public final class WorkflowRestClientProperties {
     private boolean enabled = true;
+    private boolean warmupEnabled = true;
+    private Duration warmupTimeout = Duration.ofSeconds(30);
+    private String warmupPath;
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration responseTimeout = Duration.ofSeconds(30);
     private int maxConnections = 100;
@@ -28,6 +31,41 @@ public final class WorkflowRestClientProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    /** Preload transport resources before the application accepts workflows. */
+    public boolean isWarmupEnabled() {
+        return warmupEnabled;
+    }
+
+    public void setWarmupEnabled(boolean warmupEnabled) {
+        this.warmupEnabled = warmupEnabled;
+    }
+
+    public Duration getWarmupTimeout() {
+        return warmupTimeout;
+    }
+
+    public void setWarmupTimeout(Duration warmupTimeout) {
+        if (warmupTimeout == null || warmupTimeout.isZero() || warmupTimeout.isNegative()) {
+            throw new IllegalArgumentException("warmupTimeout must be positive");
+        }
+        this.warmupTimeout = warmupTimeout;
+    }
+
+    /** Optional JSON health endpoint on each client's base URL, requested with GET at startup. */
+    public String getWarmupPath() { return warmupPath; }
+
+    public void setWarmupPath(String path) {
+        if (path != null && !path.isBlank()) {
+            var uri = java.net.URI.create(path);
+            if (!path.startsWith("/") || uri.isAbsolute() || uri.getRawAuthority() != null || uri.getFragment() != null) {
+                throw new IllegalArgumentException("warmupPath must be a path on the client's base URL");
+            }
+            warmupPath = path;
+        } else {
+            warmupPath = null;
+        }
     }
 
     public Duration getConnectTimeout() {

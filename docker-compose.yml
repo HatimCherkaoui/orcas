@@ -16,7 +16,7 @@ services:
       - postgres_data:/var/lib/postgresql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U orchestrator -d orchestrator" ]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 20
       start_period: 10s
@@ -102,8 +102,8 @@ services:
       WORKFLOW_ORCHESTRATOR_KAFKA_CONSUMERS_ENABLED: "false"
       JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null" ]
-      interval: 10s
+      test: [ "CMD", "curl", "-fsS", "--connect-timeout", "1", "--max-time", "3", "http://127.0.0.1:8081/actuator/health/readiness" ]
+      interval: 30s
       timeout: 5s
       retries: 30
       start_period: 30s
@@ -127,6 +127,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      wiremock:
+        condition: service_healthy
     environment:
       OTEL_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
       OTEL_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
@@ -148,14 +150,14 @@ services:
       DEMO_NOTIFICATION_BASE_URL: http://wiremock:8080
       DEMO_INVENTORY_BASE_URL: http://wiremock:8080
       JAVA_TOOL_OPTIONS: "${ORCAS_JAVA_TOOL_OPTIONS:--XX:+UseContainerSupport -XX:ActiveProcessorCount=2 -XX:MaxDirectMemorySize=64m -Xms64m -Xmx256m -XX:+ExitOnOutOfMemoryError}"
-      WORKFLOW_KAFKA_CONCURRENCY: ${WORKFLOW_KAFKA_CONCURRENCY:-2}
+      WORKFLOW_KAFKA_CONCURRENCY: ${WORKFLOW_KAFKA_CONCURRENCY:-4}
       WORKFLOW_KAFKA_PARTITIONS: ${WORKFLOW_KAFKA_PARTITIONS:-12}
       WORKFLOW_ASYNC_CONCURRENCY: ${WORKFLOW_ASYNC_CONCURRENCY:-4}
       DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-6}
       LOG_FORMAT: ecs
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness >/dev/null" ]
-      interval: 10s
+      test: [ "CMD", "curl", "-fsS", "--connect-timeout", "1", "--max-time", "3", "http://127.0.0.1:8080/actuator/health/readiness" ]
+      interval: 30s
       timeout: 5s
       retries: 30
       start_period: 30s
@@ -188,6 +190,12 @@ services:
     environment:
       JAVA_OPTS: "-Xms32m -Xmx128m -XX:ActiveProcessorCount=2"
     command: [ "--global-response-templating", "--max-request-journal-entries", "1000" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "--connect-timeout", "1", "--max-time", "3", "http://127.0.0.1:8080/__admin/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     volumes:
       - ./wiremock:/home/wiremock:ro
     ports:
@@ -195,7 +203,7 @@ services:
     networks: [ workflow-net ]
 
   elasticsearch:
-    cpu_shares: 256
+    cpu_shares: 512
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: workflow-elasticsearch
     profiles: [ prod ]
@@ -204,7 +212,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=true
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
-      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms384m -Xmx384m -XX:ActiveProcessorCount=2}
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m -XX:ActiveProcessorCount=2}
     ports:
       - "9200:9200"
     volumes:
@@ -217,7 +225,7 @@ services:
           --user "elastic:$$ELASTIC_PASSWORD"
           'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s'
           | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(green|yellow)"'
-      interval: 10s
+      interval: 30s
       timeout: 10s
       retries: 60
       start_period: 120s
@@ -255,8 +263,8 @@ services:
       es-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"level\":\"available\"'" ]
-      interval: 5s
+      test: [ "CMD-SHELL", "curl -fsS --connect-timeout 1 --max-time 3 http://localhost:5601/api/status | grep -q '\"level\":\"available\"'" ]
+      interval: 30s
       timeout: 5s
       retries: 60
       start_period: 120s
@@ -276,8 +284,19 @@ services:
       - ./observability:/observability:ro
     entrypoint: ["/bin/bash", "/observability/setup-kibana.sh"]
 
+  otel-storage-init:
+    # Reuse the existing image; initialize ownership without running the
+    # collector as root or downloading another image for the full profile.
+    image: postgres:18.6
+    profiles: [ prod ]
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec", "chown 10001:10001 /var/lib/otelcol"]
+    volumes:
+      - otel_collector_data:/var/lib/otelcol
+    network_mode: none
+
   otel-collector:
-    cpu_shares: 512
+    cpu_shares: 1024
     image: otel/opentelemetry-collector-contrib:0.123.0
     container_name: workflow-otel-collector
     profiles: [ prod ]
@@ -286,10 +305,13 @@ services:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-adminpassword}
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - otel_collector_data:/var/lib/otelcol
     ports:
       - "4317:4317"
       - "4318:4318"
     depends_on:
+      otel-storage-init:
+        condition: service_completed_successfully
       es-setup:
         condition: service_completed_successfully
     networks: [ workflow-net ]
@@ -298,6 +320,7 @@ volumes:
   postgres_data:
   kafka_data:
   elasticsearch_data:
+  otel_collector_data:
 
 networks:
   workflow-net:

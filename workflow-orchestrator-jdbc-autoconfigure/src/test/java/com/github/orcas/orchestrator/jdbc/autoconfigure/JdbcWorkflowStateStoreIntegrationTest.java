@@ -1,6 +1,7 @@
 package com.github.orcas.orchestrator.jdbc.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.orcas.orchestrator.core.model.Metadata;
 import com.github.orcas.orchestrator.core.model.Status;
@@ -43,7 +44,7 @@ class JdbcWorkflowStateStoreIntegrationTest {
         POSTGRES.getPassword());
     new WorkflowJdbcSchemaInitializer(dataSource, new WorkflowJdbcProperties()).afterPropertiesSet();
     jdbc = new NamedParameterJdbcTemplate(dataSource);
-    stateStore = new JdbcWorkflowStateStore(jdbc, new ObjectMapper(), new DataSourceTransactionManager(dataSource));
+    stateStore = new JdbcWorkflowStateStore(jdbc, new ObjectMapper(), new DataSourceTransactionManager(dataSource), true);
   }
 
   @BeforeEach
@@ -61,6 +62,101 @@ class JdbcWorkflowStateStoreIntegrationTest {
             workflow
         RESTART IDENTITY CASCADE
         """);
+  }
+
+  @Test
+  void initialStateAndStepSnapshotEachUseOneDatabaseCommand() {
+    var calls = new java.util.concurrent.atomic.AtomicInteger();
+    var countingJdbc = new NamedParameterJdbcTemplate(jdbc.getJdbcTemplate()) {
+      @Override public int update(String sql, org.springframework.jdbc.core.namedparam.SqlParameterSource params) {
+        calls.incrementAndGet();
+        return super.update(sql, params);
+      }
+    };
+    var store = new JdbcWorkflowStateStore(countingJdbc, new ObjectMapper(),
+        new DataSourceTransactionManager(jdbc.getJdbcTemplate().getDataSource()), true);
+    store.start("batched-start", "fulfilment-flow", new WorkflowContext("draft", new Metadata()));
+    assertThat(calls.get()).isEqualTo(1);
+    assertThat(count("workflow_log")).isEqualTo(1);
+    assertThat(count("workflow_context_log")).isEqualTo(1);
+    assertThat(count("workflow_metadata_log")).isEqualTo(1);
+    store.saveStepContext(new com.github.orcas.orchestrator.core.model.StepContext(
+        "batched-start", "fulfilment-flow", "charge", null, "draft", "charged", Map.of(), java.time.Instant.now()));
+    assertThat(calls.get()).isEqualTo(2);
+    assertThat(count("workflow_step_context_log")).isEqualTo(1);
+    assertThat(store.stepContext("batched-start", "charge")).isPresent();
+    store.start("batched-start", "fulfilment-flow", new WorkflowContext("updated", new Metadata()));
+    assertThat(calls.get()).isEqualTo(3);
+    assertThat(count("workflow")).isEqualTo(1);
+    assertThat(count("workflow_log")).isEqualTo(2);
+    assertThat(count("workflow_context_log")).isEqualTo(2);
+  }
+
+  @Test
+  void statusAndAllAuditRowsUseOneDatabaseCommand() {
+    stateStore.start("batched-status", "fulfilment-flow", new WorkflowContext("draft", new Metadata()));
+    var calls = new java.util.concurrent.atomic.AtomicInteger();
+    var countingJdbc = new NamedParameterJdbcTemplate(jdbc.getJdbcTemplate()) {
+      @Override public int update(String sql, org.springframework.jdbc.core.namedparam.SqlParameterSource params) {
+        calls.incrementAndGet();
+        return super.update(sql, params);
+      }
+    };
+    var store = new JdbcWorkflowStateStore(countingJdbc, new ObjectMapper(),
+        new DataSourceTransactionManager(jdbc.getJdbcTemplate().getDataSource()), true);
+    store.record(StatusEvent.of("batched-status", "fulfilment-flow", "charge", Status.SUCCESS,
+        Map.of("requestId", "request-batched"), "charged"), "PaymentStep");
+    assertThat(calls.get()).isEqualTo(1);
+    assertThat(columnValue("workflow", "status", "batched-status")).isEqualTo("RUNNING");
+    assertThat(columnValue("workflow_step", "state", "batched-status")).isEqualTo("SUCCESS");
+    assertThat(count("workflow_step_log")).isEqualTo(1);
+    assertThat(count("workflow_log")).isEqualTo(2);
+    assertThat(count("workflow_metadata_log")).isEqualTo(2);
+    assertThat(store.context("batched-status").metadata().get("requestId")).isEqualTo("request-batched");
+  }
+
+  @Test
+  void standaloneJdbcManagerStillParticipatesInBusinessRollback() {
+    var manager = new DataSourceTransactionManager(jdbc.getJdbcTemplate().getDataSource());
+    var store = new JdbcWorkflowStateStore(jdbc, new ObjectMapper(), manager, true);
+    new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(status -> {
+      store.start("business-rollback", "fulfilment-flow", new WorkflowContext("draft", new Metadata()));
+      status.setRollbackOnly();
+    });
+    assertThat(count("workflow")).isZero();
+    assertThat(count("workflow_context")).isZero();
+    assertThat(count("workflow_log")).isZero();
+  }
+
+  @Test
+  void stepContextLoadsWorkflowNameWithoutNestedConnection() {
+    var id = "single-connection-context";
+    var context = new WorkflowContext(Map.of("value", "draft"), new Metadata());
+    stateStore.start(id, "fulfilment-flow", context);
+    var step = new StepContext(id, "fulfilment-flow", "charge", null,
+        context.businessInput(), "charged", Map.of(), Instant.now());
+    stateStore.saveStepContext(step);
+    var store = new JdbcWorkflowStateStore(jdbc, new ObjectMapper(),
+        new DataSourceTransactionManager(jdbc.getJdbcTemplate().getDataSource())) {
+      @Override public String workflowName(String workflowId) {
+        throw new AssertionError("Row mapping must not open another connection");
+      }
+    };
+    assertThat(store.stepContext(id, "charge")).isPresent();
+    assertThat(store.stepContext(id, "charge").orElseThrow().workflow()).isEqualTo("fulfilment-flow");
+  }
+
+  @Test
+  void stepResultRollsBackBothSnapshotsWhenContextPersistenceFails() {
+    var id = "atomic-step-result";
+    stateStore.start(id, "fulfilment-flow", new WorkflowContext("draft", new Metadata()));
+    var step = new StepContext(id, "fulfilment-flow", "charge", null,
+        "draft", "charged", Map.of(), Instant.now());
+    assertThatThrownBy(() -> stateStore.saveStepResult(step, null))
+        .isInstanceOf(NullPointerException.class);
+    assertThat(stateStore.stepContext(id, "charge")).isEmpty();
+    assertThat(count("workflow_step_context_log")).isZero();
+    assertThat(stateStore.context(id).businessInput()).isEqualTo("draft");
   }
 
   @Test
@@ -283,5 +379,3 @@ class JdbcWorkflowStateStoreIntegrationTest {
   private record Payload(String value, int count) {
   }
 }
-
-

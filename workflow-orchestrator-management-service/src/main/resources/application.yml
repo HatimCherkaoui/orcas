@@ -12,7 +12,7 @@ spring:
       properties:
         enable.idempotence: true
         compression.type: lz4
-        linger.ms: 5
+        linger.ms: ${KAFKA_PRODUCER_LINGER_MS:0}
         batch.size: 16384
         buffer.memory: 8388608
         delivery.timeout.ms: 30000
@@ -83,6 +83,9 @@ management:
   opentelemetry:
     tracing:
       export:
+        max-queue-size: ${OTEL_SPAN_QUEUE_SIZE:8192}
+        max-batch-size: ${OTEL_SPAN_BATCH_SIZE:2048}
+        schedule-delay: ${OTEL_SPAN_SCHEDULE_DELAY:500ms}
         otlp:
           endpoint: ${OTEL_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
     logging:

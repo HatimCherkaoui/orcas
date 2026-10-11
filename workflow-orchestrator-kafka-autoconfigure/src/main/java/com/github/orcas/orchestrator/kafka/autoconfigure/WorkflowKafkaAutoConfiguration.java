@@ -78,7 +78,10 @@ public final class WorkflowKafkaAutoConfiguration {
         consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_POLL_RECORDS_CONFIG, properties.getMaxPollRecords());
         consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.FETCH_MAX_BYTES_CONFIG, properties.getFetchMaxBytes());
         consumerSettings.put(org.apache.kafka.clients.consumer.ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, properties.getMaxPartitionFetchBytes());
-        listener.getContainerProperties().setKafkaConsumerProperties(consumerSettings);
+        // Spring excludes kafkaConsumerProperties when copying factory settings to
+        // listener containers. Apply these to each real container after creation.
+        listener.setContainerCustomizer(container ->
+                container.getContainerProperties().getKafkaConsumerProperties().putAll(consumerSettings));
         listener.getContainerProperties().setObservationRegistry(observations.getIfAvailable(() -> io.micrometer.observation.ObservationRegistry.NOOP));
         listener.setConcurrency(properties.getConcurrency());
         listener.getContainerProperties().setMissingTopicsFatal(properties.isMissingTopicsFatal());

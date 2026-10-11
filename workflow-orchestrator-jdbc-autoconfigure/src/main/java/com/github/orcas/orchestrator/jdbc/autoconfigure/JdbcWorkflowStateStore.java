@@ -51,10 +51,17 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
             NamedParameterJdbcTemplate jdbc,
             ObjectMapper mapper,
             PlatformTransactionManager transactionManager) {
+        this(jdbc, mapper, transactionManager, false);
+    }
+
+    public JdbcWorkflowStateStore(NamedParameterJdbcTemplate jdbc, ObjectMapper mapper,
+                                 PlatformTransactionManager transactionManager, boolean localTransactions) {
         this.jdbc = jdbc;
         this.json = new JdbcJsonCodec(mapper);
         this.auditLog = new JdbcAuditLog(jdbc, json);
-        this.transactions = new JdbcTransactionRunner(transactionManager, log);
+        this.transactions = new JdbcTransactionRunner(localTransactions
+                ? new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getJdbcTemplate().getDataSource())
+                : transactionManager, transactionManager, log);
     }
 
     @Override
@@ -65,55 +72,50 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
         String metadataJson = json.write(context.metadata().asMap());
         String contextClass = context.businessInput() == null ? null : context.businessInput().getClass().getName();
 
-        transactions.execute(() -> {
-            jdbc.update("""
-                            insert into workflow (pipeline_id, workflow, status, date_created, date_updated)
-                            values (:id, :workflow, :status, cast(:created as timestamptz), cast(:updated as timestamptz))
-                            on conflict (pipeline_id) do nothing
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("id", id, Types.VARCHAR)
-                            .addValue("workflow", workflow, Types.VARCHAR)
-                            .addValue("status", Status.STARTED.name(), Types.VARCHAR)
-                            .addValue("created", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-
-            jdbc.update("""
-                            insert into workflow_context
-                                (pipeline_id, context_json, context_class_name, date_created, date_updated)
-                            values (:id, :json, :className, cast(:created as timestamptz), cast(:updated as timestamptz))
-                            on conflict (pipeline_id) do update set
-                                context_json=excluded.context_json,
-                                context_class_name=excluded.context_class_name,
-                                date_updated=excluded.date_updated
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("id", id, Types.VARCHAR)
-                            .addValue("json", contextJson, Types.LONGVARCHAR)
-                            .addValue("className", contextClass, Types.VARCHAR)
-                            .addValue("created", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-
-            jdbc.update("""
-                            insert into workflow_metadata
-                                (pipeline_id, metadata_json, metadata_class_name, date_created, date_updated)
-                            values (:id, :json, :className, cast(:created as timestamptz), cast(:updated as timestamptz))
-                            on conflict (pipeline_id) do update set
-                                metadata_json=excluded.metadata_json,
-                                metadata_class_name=excluded.metadata_class_name,
-                                date_updated=excluded.date_updated
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("id", id, Types.VARCHAR)
-                            .addValue("json", metadataJson, Types.LONGVARCHAR)
-                            .addValue("className", Metadata.class.getName(), Types.VARCHAR)
-                            .addValue("created", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-
-            auditLog.workflow(id, "CREATE", Map.of("workflow", workflow, "status", Status.STARTED.name()), now);
-            auditLog.context(id, "CREATE", context.businessInput(), now);
-            auditLog.metadata(id, "CREATE", context.metadata().asMap(), now);
-        });
+        var parameters = new MapSqlParameterSource()
+                .addValue("id", id, Types.VARCHAR)
+                .addValue("workflow", workflow, Types.VARCHAR)
+                .addValue("status", Status.STARTED.name(), Types.VARCHAR)
+                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("contextJson", contextJson, Types.LONGVARCHAR)
+                .addValue("contextClass", contextClass, Types.VARCHAR)
+                .addValue("metadataJson", metadataJson, Types.LONGVARCHAR)
+                .addValue("metadataClass", Metadata.class.getName(), Types.VARCHAR)
+                .addValue("workflowSnapshot", json.write(Map.of("workflow", workflow, "status", Status.STARTED.name())), Types.LONGVARCHAR);
+        transactions.execute(() -> jdbc.update("""
+                with created_workflow as (
+                    insert into workflow (pipeline_id, workflow, status, date_created, date_updated)
+                    values (:id, :workflow, :status, :updated, :updated)
+                    on conflict (pipeline_id) do nothing returning pipeline_id
+                ), saved_context as (
+                    insert into workflow_context
+                        (pipeline_id, context_json, context_class_name, date_created, date_updated)
+                    select :id, :contextJson, :contextClass, :updated, :updated
+                    from (select count(*) from created_workflow) initialized
+                    on conflict (pipeline_id) do update set
+                        context_json=excluded.context_json,
+                        context_class_name=excluded.context_class_name,
+                        date_updated=excluded.date_updated
+                    returning pipeline_id
+                ), saved_metadata as (
+                    insert into workflow_metadata
+                        (pipeline_id, metadata_json, metadata_class_name, date_created, date_updated)
+                    select :id, :metadataJson, :metadataClass, :updated, :updated from saved_context
+                    on conflict (pipeline_id) do update set
+                        metadata_json=excluded.metadata_json,
+                        metadata_class_name=excluded.metadata_class_name,
+                        date_updated=excluded.date_updated
+                    returning pipeline_id
+                ), context_audit as (
+                    insert into workflow_context_log (pipeline_id, action, snapshot_json, date_created)
+                    select pipeline_id, 'CREATE', :contextJson, :updated from saved_context
+                ), metadata_audit as (
+                    insert into workflow_metadata_log (pipeline_id, action, snapshot_json, date_created)
+                    select pipeline_id, 'CREATE', :metadataJson, :updated from saved_metadata
+                )
+                insert into workflow_log (pipeline_id, action, snapshot_json, date_created)
+                select pipeline_id, 'CREATE', :workflowSnapshot, :updated from saved_metadata
+                """, parameters));
     }
 
     //@Override
@@ -126,89 +128,73 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
         OffsetDateTime now = event.timestamp() == null
                 ? OffsetDateTime.now(ZoneOffset.UTC)
                 : OffsetDateTime.ofInstant(event.timestamp(), ZoneOffset.UTC);
-
-        transactions.execute(() -> {
-            if (!StepNames.INIT.equals(event.step())) {
-                jdbc.update("""
-                                insert into workflow_step
-                                    (pipeline_id, workflow, step_name, step_type_class_name,
-                                     state, failure_category, failure_code, failure_type, failure_message,
-                                     failure_disposition, date_started, date_ended, date_updated)
-                                values (:id, :workflow, :step, :type, :state, :failureCategory, :failureCode,
-                                        :failureType, :failureMessage, :failureDisposition,
-                                        :started, :ended, :updated)
-                                on conflict (pipeline_id, step_name) do update set
-                                    step_type_class_name=coalesce(excluded.step_type_class_name, workflow_step.step_type_class_name),
-                                    state=excluded.state,
-                                    failure_category=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_category else null end,
-                                    failure_code=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_code else null end,
-                                    failure_type=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_type else null end,
-                                    failure_message=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_message else null end,
-                                    failure_disposition=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_disposition else null end,
-                                    date_started=coalesce(workflow_step.date_started, excluded.date_started),
-                                    date_ended=case when excluded.state in ('SUCCESS','FAILED','SKIPPED')
-                                                    then excluded.date_ended else workflow_step.date_ended end,
-                                    date_updated=excluded.date_updated
-                                """,
-                        new MapSqlParameterSource()
-                                .addValue("id", event.workflowId(), Types.VARCHAR)
-                                .addValue("workflow", event.workflow(), Types.VARCHAR)
-                                .addValue("step", event.step(), Types.VARCHAR)
-                                .addValue("type", stepTypeClassName, Types.VARCHAR)
-                                .addValue("state", event.status().name(), Types.VARCHAR)
-                                .addValue("failureCategory", event.failure() == null ? null : event.failure().category(), Types.VARCHAR)
-                                .addValue("failureCode", event.failure() == null ? null : event.failure().code(), Types.VARCHAR)
-                                .addValue("failureType", event.failure() == null ? null : event.failure().exceptionType(), Types.VARCHAR)
-                                .addValue("failureMessage", event.failure() == null ? null : event.failure().message(), Types.LONGVARCHAR)
-                                .addValue("failureDisposition", event.failure() == null ? null : event.failure().disposition(), Types.VARCHAR)
-                                .addValue("started", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                                .addValue("ended", terminal(event.status()) ? now : null, Types.TIMESTAMP_WITH_TIMEZONE)
-                                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-
-                Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
-                snapshot.put("step", event.step());
-                snapshot.put("status", event.status().name());
-                snapshot.put("message", event.message() == null ? "" : event.message());
-                if (event.failure() != null) snapshot.put("failure", event.failure());
-                auditLog.step(event.workflowId(), event.step(), event.status().name(), snapshot, now);
-            }
-
-            // A step can succeed while downstream steps still need to run. The
-            // engine calls finish() only after route matching proves this event
-            // ends the workflow, so step-terminal states must not make the
-            // workflow row look terminal in the dashboard yet.
-            String workflowStatus = switch (event.status()) {
-                case SUCCESS, FAILED, SKIPPED -> Status.RUNNING.name();
-                default -> event.status().name();
-            };
-
-            jdbc.update("""
-                            update workflow
-                               set status=:status, date_updated=:updated
-                             where pipeline_id=:id
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("status", workflowStatus, Types.VARCHAR)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("id", event.workflowId(), Types.VARCHAR));
-
-            auditLog.workflow(event.workflowId(), "STATUS",
-                    Map.of("status", workflowStatus, "lastStep", event.step()), now);
-
-            if (event.metadata() != null) {
-                String metadataJson = json.write(event.metadata());
-                jdbc.update("""
-                                update workflow_metadata
-                                   set metadata_json=:json, date_updated=:updated
-                                 where pipeline_id=:id
-                                """,
-                        new MapSqlParameterSource()
-                                .addValue("json", metadataJson, Types.LONGVARCHAR)
-                                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                                .addValue("id", event.workflowId(), Types.VARCHAR));
-                auditLog.metadata(event.workflowId(), "UPDATE", event.metadata(), now);
-            }
-        });
+        // Step completion is not workflow completion; routing decides that later.
+        String workflowStatus = switch (event.status()) {
+            case SUCCESS, FAILED, SKIPPED -> Status.RUNNING.name();
+            default -> event.status().name();
+        };
+        Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+        snapshot.put("step", event.step());
+        snapshot.put("status", event.status().name());
+        snapshot.put("message", event.message() == null ? "" : event.message());
+        if (event.failure() != null) snapshot.put("failure", event.failure());
+        var parameters = new MapSqlParameterSource()
+                .addValue("id", event.workflowId(), Types.VARCHAR)
+                .addValue("workflow", event.workflow(), Types.VARCHAR)
+                .addValue("step", event.step(), Types.VARCHAR)
+                .addValue("type", stepTypeClassName, Types.VARCHAR)
+                .addValue("state", event.status().name(), Types.VARCHAR)
+                .addValue("failureCategory", event.failure() == null ? null : event.failure().category(), Types.VARCHAR)
+                .addValue("failureCode", event.failure() == null ? null : event.failure().code(), Types.VARCHAR)
+                .addValue("failureType", event.failure() == null ? null : event.failure().exceptionType(), Types.VARCHAR)
+                .addValue("failureMessage", event.failure() == null ? null : event.failure().message(), Types.LONGVARCHAR)
+                .addValue("failureDisposition", event.failure() == null ? null : event.failure().disposition(), Types.VARCHAR)
+                .addValue("started", now, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("ended", terminal(event.status()) ? now : null, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
+                .addValue("recordStep", !StepNames.INIT.equals(event.step()), Types.BOOLEAN)
+                .addValue("workflowStatus", workflowStatus, Types.VARCHAR)
+                .addValue("stepSnapshot", json.write(snapshot), Types.LONGVARCHAR)
+                .addValue("workflowSnapshot", json.write(Map.of("status", workflowStatus, "lastStep", event.step())), Types.LONGVARCHAR)
+                .addValue("hasMetadata", event.metadata() != null, Types.BOOLEAN)
+                .addValue("metadataJson", event.metadata() == null ? null : json.write(event.metadata()), Types.LONGVARCHAR);
+        transactions.execute(() -> jdbc.update("""
+                with changed_step as (
+                    insert into workflow_step
+                        (pipeline_id, workflow, step_name, step_type_class_name,
+                         state, failure_category, failure_code, failure_type, failure_message,
+                         failure_disposition, date_started, date_ended, date_updated)
+                    select :id, :workflow, :step, :type, :state, :failureCategory, :failureCode,
+                            :failureType, :failureMessage, :failureDisposition,
+                            :started, :ended, :updated where :recordStep
+                    on conflict (pipeline_id, step_name) do update set
+                        step_type_class_name=coalesce(excluded.step_type_class_name, workflow_step.step_type_class_name),
+                        state=excluded.state,
+                        failure_category=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_category else null end,
+                        failure_code=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_code else null end,
+                        failure_type=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_type else null end,
+                        failure_message=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_message else null end,
+                        failure_disposition=case when excluded.state in ('FAILED','SUSPENDED') then excluded.failure_disposition else null end,
+                        date_started=coalesce(workflow_step.date_started, excluded.date_started),
+                        date_ended=case when excluded.state in ('SUCCESS','FAILED','SKIPPED')
+                                        then excluded.date_ended else workflow_step.date_ended end,
+                        date_updated=excluded.date_updated
+                    returning pipeline_id
+                ), step_audit as (
+                    insert into workflow_step_log (pipeline_id, step_name, action, snapshot_json, date_created)
+                    select pipeline_id, :step, :state, :stepSnapshot, :updated from changed_step
+                ), changed_workflow as (
+                    update workflow set status=:workflowStatus, date_updated=:updated where pipeline_id=:id
+                ), changed_metadata as (
+                    update workflow_metadata set metadata_json=:metadataJson, date_updated=:updated
+                    where pipeline_id=:id and :hasMetadata returning pipeline_id
+                ), metadata_audit as (
+                    insert into workflow_metadata_log (pipeline_id, action, snapshot_json, date_created)
+                    select pipeline_id, 'UPDATE', :metadataJson, :updated from changed_metadata
+                )
+                insert into workflow_log (pipeline_id, action, snapshot_json, date_created)
+                values (:id, 'STATUS', :workflowSnapshot, :updated)
+                """, parameters));
     }
 
     @Override
@@ -299,14 +285,15 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
     @Override
     public Optional<StepContext> stepContext(String workflowId, String stepName) {
         var rows = jdbc.query("""
-                        select step_name, parent_step_name, input_json, output_json, attributes_json, date_updated
-                          from workflow_step_context
-                         where pipeline_id=:id and step_name=:step
+                        select s.step_name, s.parent_step_name, s.input_json, s.output_json, s.attributes_json, s.date_updated, w.workflow
+                          from workflow_step_context s
+                          join workflow w on w.pipeline_id=s.pipeline_id
+                         where s.pipeline_id=:id and s.step_name=:step
                         """,
                 new MapSqlParameterSource().addValue("id", workflowId).addValue("step", stepName),
                 (rs, n) -> new StepContext(
                         workflowId,
-                        workflowName(workflowId),
+                        rs.getString("workflow"),
                         rs.getString("step_name"),
                         rs.getString("parent_step_name"),
                         json.read(rs.getString("input_json")),
@@ -327,93 +314,97 @@ public class JdbcWorkflowStateStore implements WorkflowStateStore, WorkflowRetry
                 new MapSqlParameterSource().addValue("step", stepName, Types.VARCHAR), String.class);
     }
 
+    @Override
     public void saveStepContext(StepContext context) {
-        OffsetDateTime now = OffsetDateTime.ofInstant(
-                context.updatedAt() == null ? Instant.now() : context.updatedAt(), ZoneOffset.UTC);
+        transactions.execute(() -> writeStepContext(context));
+    }
 
+    @Override
+    public void saveStepResult(StepContext step, WorkflowContext context) {
         transactions.execute(() -> {
-            // A step context has a composite FK to workflow_step. Context persistence can
-            // happen before the status event is consumed (notably for synchronous, async
-            // and parallel steps), so establish the parent row first. The later status
-            // event enriches this row with the concrete step class and terminal state.
-            jdbc.update("""
-                            insert into workflow_step
-                                (pipeline_id, workflow, step_name, step_type_class_name, state,
-                                 date_started, date_ended, date_updated)
-                            values (:id, :workflow, :step, null, 'RUNNING', :started, null, :updated)
-                            on conflict (pipeline_id, step_name) do nothing
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("id", context.workflowId(), Types.VARCHAR)
-                            .addValue("workflow", context.workflow(), Types.VARCHAR)
-                            .addValue("step", context.stepName(), Types.VARCHAR)
-                            .addValue("started", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-
-            jdbc.update("""
-                            insert into workflow_step_context
-                                (pipeline_id, step_name, parent_step_name, input_json, output_json, attributes_json, date_updated)
-                            values (:id,:step,:parent,:input,:output,:attributes,:updated)
-                            on conflict (pipeline_id, step_name) do update set
-                                parent_step_name=excluded.parent_step_name,
-                                input_json=excluded.input_json,
-                                output_json=excluded.output_json,
-                                attributes_json=excluded.attributes_json,
-                                date_updated=excluded.date_updated
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("id", context.workflowId(), Types.VARCHAR)
-                            .addValue("step", context.stepName(), Types.VARCHAR)
-                            .addValue("parent", context.parentStepName(), Types.VARCHAR)
-                            .addValue("input", json.write(context.input()), Types.LONGVARCHAR)
-                            .addValue("output", json.write(context.output()), Types.LONGVARCHAR)
-                            .addValue("attributes", json.write(context.attributes()), Types.LONGVARCHAR)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
-            auditLog.stepContextSnapshot(
-                    context.workflowId(),
-                    context.stepName(),
-                    context,
-                    now);
+            writeStepContext(step);
+            writeContext(step.workflowId(), context);
         });
+    }
+
+    private void writeStepContext(StepContext context) {
+        OffsetDateTime now = OffsetDateTime.ofInstant(
+            context.updatedAt() == null ? Instant.now() : context.updatedAt(), ZoneOffset.UTC);
+
+        // A step context has a composite FK to workflow_step. Context persistence can
+        // happen before the status event is consumed (notably for synchronous, async
+        // and parallel steps), so establish the parent row first. The later status
+        // event enriches this row with the concrete step class and terminal state.
+        var parameters = new MapSqlParameterSource()
+                .addValue("id", context.workflowId(), Types.VARCHAR)
+                .addValue("workflow", context.workflow(), Types.VARCHAR)
+                .addValue("step", context.stepName(), Types.VARCHAR)
+                .addValue("parent", context.parentStepName(), Types.VARCHAR)
+                .addValue("input", json.write(context.input()), Types.LONGVARCHAR)
+                .addValue("output", json.write(context.output()), Types.LONGVARCHAR)
+                .addValue("attributes", json.write(context.attributes()), Types.LONGVARCHAR)
+                .addValue("snapshot", json.write(context), Types.LONGVARCHAR)
+                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE);
+        jdbc.update("""
+                with established_step as (
+                    insert into workflow_step
+                        (pipeline_id, workflow, step_name, step_type_class_name, state,
+                         date_started, date_ended, date_updated)
+                    values (:id, :workflow, :step, null, 'RUNNING', :updated, null, :updated)
+                    on conflict (pipeline_id, step_name) do nothing returning pipeline_id
+                ), saved_snapshot as (
+                    insert into workflow_step_context
+                        (pipeline_id, step_name, parent_step_name, input_json, output_json, attributes_json, date_updated)
+                    select :id, :step, :parent, :input, :output, :attributes, :updated
+                    from (select count(*) from established_step) initialized
+                    on conflict (pipeline_id, step_name) do update set
+                        parent_step_name=excluded.parent_step_name,
+                        input_json=excluded.input_json,
+                        output_json=excluded.output_json,
+                        attributes_json=excluded.attributes_json,
+                        date_updated=excluded.date_updated
+                    returning pipeline_id
+                )
+                insert into workflow_step_context_log (pipeline_id, step_name, snapshot_json, date_created)
+                select pipeline_id, :step, :snapshot, :updated from saved_snapshot
+                """, parameters);
     }
 
     @Override
     public void updateContext(String id, WorkflowContext context) {
+        transactions.execute(() -> writeContext(id, context));
+    }
+
+    private void writeContext(String id, WorkflowContext context) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         String contextJson = json.write(context.businessInput());
         String metadataJson = json.write(context.metadata().asMap());
         String contextClass = context.businessInput() == null ? null : context.businessInput().getClass().getName();
 
-        transactions.execute(() -> {
-            jdbc.update("""
-                            update workflow_context
-                               set context_json=:json, context_class_name=:className, date_updated=:updated
-                             where pipeline_id=:id
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("json", contextJson, Types.LONGVARCHAR)
-                            .addValue("className", contextClass, Types.VARCHAR)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("id", id, Types.VARCHAR));
-
-            jdbc.update("""
-                            update workflow_metadata
-                               set metadata_json=:json, date_updated=:updated
-                             where pipeline_id=:id
-                            """,
-                    new MapSqlParameterSource()
-                            .addValue("json", metadataJson, Types.LONGVARCHAR)
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("id", id, Types.VARCHAR));
-
-            auditLog.context(id, "UPDATE", context.businessInput(), now);
-            auditLog.metadata(id, "UPDATE", context.metadata().asMap(), now);
-
-            jdbc.update("update workflow set date_updated=:updated where pipeline_id=:id",
-                    new MapSqlParameterSource()
-                            .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE)
-                            .addValue("id", id, Types.VARCHAR));
-        });
+        // One round trip, one transaction and the same audit snapshots. The CTEs
+        // depend on each update's RETURNING row, preserving audit/state consistency.
+        jdbc.update("""
+                with changed_context as (
+                    update workflow_context
+                       set context_json=:contextJson, context_class_name=:className, date_updated=:updated
+                     where pipeline_id=:id returning pipeline_id
+                ), changed_metadata as (
+                    update workflow_metadata set metadata_json=:metadataJson, date_updated=:updated
+                     where pipeline_id=:id returning pipeline_id
+                ), context_audit as (
+                    insert into workflow_context_log (pipeline_id, action, snapshot_json, date_created)
+                    select pipeline_id, 'UPDATE', :contextJson, :updated from changed_context
+                ), metadata_audit as (
+                    insert into workflow_metadata_log (pipeline_id, action, snapshot_json, date_created)
+                    select pipeline_id, 'UPDATE', :metadataJson, :updated from changed_metadata
+                )
+                update workflow set date_updated=:updated where pipeline_id=:id
+                """, new MapSqlParameterSource()
+                .addValue("id", id, Types.VARCHAR)
+                .addValue("contextJson", contextJson, Types.LONGVARCHAR)
+                .addValue("metadataJson", metadataJson, Types.LONGVARCHAR)
+                .addValue("className", contextClass, Types.VARCHAR)
+                .addValue("updated", now, Types.TIMESTAMP_WITH_TIMEZONE));
     }
 
 }

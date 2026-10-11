@@ -25,6 +25,7 @@ public class PaymentStartResponseConsumer implements ResponseConsumer<ResponseEn
 
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public void consume(StepExecutionContext c, ResponseEntity<PaymentClient.PaymentStartResponse> response) {
         Map<?, ?> m = c.workflowContext().businessInput() instanceof Map<?, ?> x ? x : Map.of();
         Object orderValue = c.workflowContext().metadata().get("orderId");

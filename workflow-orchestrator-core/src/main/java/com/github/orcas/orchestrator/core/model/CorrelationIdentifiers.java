@@ -13,7 +13,12 @@ public final class CorrelationIdentifiers {
     public static final String TRACE_ID = "traceId";
     private record Definition(String header, Supplier<String> generator, Set<String> aliases) { }
     private static final Map<String, Definition> DEFINITIONS = new ConcurrentHashMap<>();
+    private static volatile Map<String, String> canonicalNames = Map.of();
+    private static volatile Set<String> identifierKeys = Set.of();
     private static final Pattern VALUE = Pattern.compile("[A-Za-z0-9._:/-]{1,256}");
+    private static final Pattern TRACE_ID_VALUE = Pattern.compile("[0-9a-f]{32}");
+    private static final String ZERO_TRACE_ID = "0".repeat(32);
+    private static final String ZERO_SPAN_ID = "0".repeat(16);
     private static final Pattern TRACEPARENT = Pattern.compile("00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})");
     static {
         register(REQUEST_ID, "x-request-id", CorrelationIdentifiers::newId, "request-id");
@@ -35,23 +40,27 @@ public final class CorrelationIdentifiers {
                 throw new IllegalArgumentException("Identifier aliases overlap: " + key);
         }
         DEFINITIONS.put(key, new Definition(header.toLowerCase(Locale.ROOT), Objects.requireNonNull(generator), Set.copyOf(names)));
+        var canonical = new HashMap<String, String>();
+        DEFINITIONS.forEach((name, definition) -> definition.aliases().forEach(alias -> canonical.put(alias, name)));
+        canonicalNames = Map.copyOf(canonical);
+        identifierKeys = Set.copyOf(DEFINITIONS.keySet());
     }
-    public static Set<String> keys() { return Set.copyOf(DEFINITIONS.keySet()); }
+    public static Set<String> keys() { return identifierKeys; }
     public static boolean isIdentifier(String key) { return key != null && (DEFINITIONS.containsKey(key) || key.equals("workflowId") || key.equals("traceparent") || key.equals("tracestate")); }
     public static String header(String key) { var d = DEFINITIONS.get(key); return d == null ? ("workflowId".equals(key) ? "x-workflow-id" : key) : d.header(); }
     public static String canonical(String name) {
         if (name == null) return null;
         String lower = name.toLowerCase(Locale.ROOT);
-        return DEFINITIONS.entrySet().stream().filter(e -> e.getValue().aliases().contains(lower)).map(Map.Entry::getKey).findFirst().orElse(null);
+        return canonicalNames.get(lower);
     }
     public static boolean valid(String key, String value) {
         if (value == null || !VALUE.matcher(value).matches()) return false;
-        return !TRACE_ID.equals(key) || (value.matches("[0-9a-f]{32}") && !value.equals("0".repeat(32)));
+        return !TRACE_ID.equals(key) || (TRACE_ID_VALUE.matcher(value).matches() && !value.equals(ZERO_TRACE_ID));
     }
     public static boolean validTraceparent(String value) {
         if (value == null) return false;
         var m = TRACEPARENT.matcher(value);
-        return m.matches() && !m.group(1).equals("0".repeat(32)) && !m.group(2).equals("0".repeat(16));
+        return m.matches() && !m.group(1).equals(ZERO_TRACE_ID) && !m.group(2).equals(ZERO_SPAN_ID);
     }
     public static boolean validTracestate(String state) {
         if (state == null || state.length() > 512) return false;

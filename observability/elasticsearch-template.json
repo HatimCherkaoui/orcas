@@ -9,7 +9,8 @@
   "template": {
     "settings": {
       "index.default_pipeline": "orcas-correlation",
-      "number_of_replicas": 0
+      "number_of_replicas": 0,
+      "refresh_interval": "10s"
     },
     "mappings": {
       "dynamic_templates": [
@@ -91,6 +92,54 @@
         },
         "durationMs": {
           "type": "double"
+        },
+        "Attributes": {
+          "type": "object",
+          "enabled": false
+        },
+        "attributes": {
+          "type": "object",
+          "enabled": false
+        },
+        "Resource": {
+          "type": "object",
+          "enabled": false
+        },
+        "resource": {
+          "type": "object",
+          "enabled": false
+        },
+        "Scope": {
+          "type": "object",
+          "enabled": false
+        },
+        "Link": {
+          "type": "object",
+          "enabled": false
+        },
+        "Event": {
+          "type": "object",
+          "enabled": false
+        },
+        "TraceId": {
+          "type": "keyword",
+          "index": false,
+          "doc_values": false
+        },
+        "httpStatusCode": {
+          "type": "long"
+        },
+        "dbOperation": {
+          "type": "keyword"
+        },
+        "exceptionType": {
+          "type": "keyword"
+        },
+        "exceptionMessage": {
+          "type": "text"
+        },
+        "status": {
+          "type": "keyword"
         }
       }
     }

@@ -6,9 +6,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("workflow.orchestrator.jdbc")
 public class WorkflowJdbcProperties {
     private boolean enabled = true;
+    private boolean localTransactions = true;
     private boolean schemaInitialization = true;
     private String schemaLocation = "classpath:orchestrator-schema.sql";
 
+    public boolean isLocalTransactions() { return localTransactions; }
+    public void setLocalTransactions(boolean value) { localTransactions = value; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean value) { enabled = value; }
     public boolean isSchemaInitialization() { return schemaInitialization; }

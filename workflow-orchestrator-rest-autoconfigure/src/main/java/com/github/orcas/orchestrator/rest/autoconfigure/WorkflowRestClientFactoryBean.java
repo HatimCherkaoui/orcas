@@ -67,11 +67,35 @@ public final class WorkflowRestClientFactoryBean<T>
         LOG.info("Configuring workflow REST client '{}' for base URL {}", type.getSimpleName(), baseUrl);
 
         connectionProvider = createConnectionProvider();
-        HttpClient httpClient = createHttpClient(connectionProvider);
-        WebClient client = createWebClient(baseUrl, httpClient);
-        proxy = HttpServiceProxyFactory.builderFor(WebClientAdapter.create(client))
-                .build()
-                .createClient(type);
+        try {
+            HttpClient httpClient = createHttpClient(connectionProvider);
+            if (properties.isWarmupEnabled()) {
+                // The first business request must not initialize event loops,
+                // DNS resolver resources and native transport/security libraries.
+                // warmup() sends no request to the remote payment provider.
+                long started = System.nanoTime();
+                httpClient.warmup().block(properties.getWarmupTimeout());
+                LOG.info("Initialized workflow REST transport '{}' in {} ms", type.getSimpleName(),
+                        java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+            }
+            WebClient client = createWebClient(baseUrl, httpClient);
+            if (properties.isWarmupEnabled() && properties.getWarmupPath() != null) {
+                // An explicit health endpoint warms DNS, pooled connections/TLS and
+                // JSON codecs without invoking a workflow's business operation.
+                client.get().uri(properties.getWarmupPath()).exchangeToMono(response -> {
+                    if (response.statusCode().isError()) return response.createException().flatMap(Mono::error);
+                    return response.bodyToMono(java.util.Map.class);
+                }).block(properties.getWarmupTimeout());
+                LOG.info("Warmed workflow REST connection '{}'", type.getSimpleName());
+            }
+            proxy = HttpServiceProxyFactory.builderFor(WebClientAdapter.create(client))
+                    .build()
+                    .createClient(type);
+        } catch (RuntimeException | Error failure) {
+            // Spring may not destroy a bean whose initialization failed.
+            destroy();
+            throw failure;
+        }
     }
 
     private ConnectionProvider createConnectionProvider() {

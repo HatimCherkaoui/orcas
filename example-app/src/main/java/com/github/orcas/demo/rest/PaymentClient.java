@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 
 @WorkflowRestClient(baseUrl = "${demo.payment.base-url:http://localhost:8089}")
 public interface PaymentClient {
-    @WorkflowStep("initiate-payment")
+    // External I/O runs on the bounded executor, leaving Kafka consumers free
+    // to process status events for other workflow instances.
+    @WorkflowStep(value = "initiate-payment", async = true)
     @WorkflowRestCall(mapper = PaymentStartMapper.class, responseSubscriber = PaymentStartResponseConsumer.class)
     @PostExchange("/payments")
     ResponseEntity<PaymentStartResponse> start(@RequestBody PaymentStartRequest request);

@@ -12,13 +12,18 @@ import java.util.Map;
 /** Instruments pooled JDBC without opening additional connections or capturing SQL/parameters. */
 public final class WorkflowJdbcTelemetryPostProcessor implements BeanPostProcessor {
     private final ObjectProvider<WorkflowTelemetry> telemetry;
-    public WorkflowJdbcTelemetryPostProcessor(ObjectProvider<WorkflowTelemetry> telemetry) { this.telemetry = telemetry; }
+    private final boolean connectionSpans;
+    public WorkflowJdbcTelemetryPostProcessor(ObjectProvider<WorkflowTelemetry> telemetry) { this(telemetry, true); }
+    public WorkflowJdbcTelemetryPostProcessor(ObjectProvider<WorkflowTelemetry> telemetry, boolean connectionSpans) {
+        this.telemetry = telemetry;
+        this.connectionSpans = connectionSpans;
+    }
     @Override public Object postProcessAfterInitialization(Object bean,String name) {
         if (!(bean instanceof DataSource)) return bean;
         var factory = new org.springframework.aop.framework.ProxyFactory(bean);
         factory.setProxyTargetClass(!java.lang.reflect.Modifier.isFinal(bean.getClass().getModifiers()));
         factory.addAdvice((org.aopalliance.intercept.MethodInterceptor) invocation -> {
-            Object value = invocation.getMethod().getName().equals("getConnection")
+            Object value = connectionSpans && invocation.getMethod().getName().equals("getConnection")
                     ? observe("getConnection",invocation::proceed) : invocation.proceed();
             return value instanceof Connection connection ? connection(connection) : value;
         });

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Load the Compose order/payment workflows and verify their durable business results."""
-import argparse, base64, concurrent.futures, datetime, json, math, os, pathlib, subprocess, threading, time, urllib.request, uuid
+import argparse, base64, concurrent.futures, datetime, json, math, os, pathlib, socket, subprocess, threading, time, urllib.request, uuid
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--stages', default='50:10,200:25', help='orders:concurrent clients')
 p.add_argument('--sku', help='Use existing stock instead of creating an isolated benchmark SKU')
 p.add_argument('--timeout', type=int, default=300)
 p.add_argument('--url', default='http://localhost:8080')
 p.add_argument('--verify-traces', action='store_true', help='Require one native Elasticsearch completion per workflow')
+p.add_argument('--trace-timeout', type=int, default=120, help='Seconds allowed for asynchronous indexing after business completion')
 p.add_argument('--elasticsearch-url', default='http://localhost:9200')
 p.add_argument('--output', default='/private/tmp/orcas-compose-prod-load.json')
 a=p.parse_args()
@@ -80,10 +81,17 @@ try:
   expected={w['id'] for stage in report['stages'] for w in stage['workflows']}
   query={'size':len(expected)+1,'_source':['workflowId','durationMs','outcome'],'query':{'bool':{'filter':[{'term':{'correlationId':run}},{'term':{'operation':'workflow.completed'}}]}}}
   auth=base64.b64encode(('elastic:'+os.environ.get('ELASTIC_PASSWORD','adminpassword')).encode()).decode()
-  deadline=time.monotonic()+30; spans=[]
+  deadline=time.monotonic()+a.trace_timeout; spans=[]; result={'hits':{'total':{'value':0}}}
   while time.monotonic()<deadline:
    req=urllib.request.Request(a.elasticsearch_url.rstrip('/')+'/traces-orcas-*/_search',json.dumps(query).encode(),headers={'Content-Type':'application/json','Authorization':'Basic '+auth})
-   with urllib.request.urlopen(req,timeout=30) as response: result=json.load(response)
+   try:
+    with urllib.request.urlopen(req,timeout=min(30,max(1,deadline-time.monotonic()))) as response: result=json.load(response)
+   except urllib.error.HTTPError:
+    raise
+   except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+    report.setdefault('completion_trace_query_errors',[]).append(str(error))
+    time.sleep(min(2,max(0,deadline-time.monotonic())))
+    continue
    spans=[hit['_source'] for hit in result['hits']['hits']]
    if {span['workflowId'] for span in spans}==expected: break
    time.sleep(2)
@@ -92,6 +100,9 @@ try:
   for stage in report['stages']:
    ids={w['id'] for w in stage['workflows']}
    stage['completion_trace_latency']=percentiles([float(span['durationMs'])/1000 for span in spans if span['workflowId'] in ids])
+  profile={'size':0,'track_total_hits':True,'query':{'term':{'correlationId':run}},'aggs':{'operations':{'terms':{'field':'operation','size':100},'aggs':{'latency_ms':{'percentiles':{'field':'durationMs','percents':[50,95,99]}},'mean_ms':{'avg':{'field':'durationMs'}}}},'event_types':{'terms':{'field':'eventType','size':20}}}}
+  req=urllib.request.Request(a.elasticsearch_url.rstrip('/')+'/traces-orcas-*/_search',json.dumps(profile).encode(),headers={'Content-Type':'application/json','Authorization':'Basic '+auth})
+  with urllib.request.urlopen(req,timeout=30) as response: report['trace_profile']=json.load(response)
  report['passed']=True
 except Exception as e: report['passed']=False; report['error']=str(e)
 finally:

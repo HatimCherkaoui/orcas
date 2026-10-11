@@ -11,6 +11,7 @@ class WorkflowJdbcAutoConfigurationTest {
         var properties = new WorkflowJdbcProperties();
 
         assertThat(properties.isEnabled()).isTrue();
+        assertThat(properties.isLocalTransactions()).isTrue();
         assertThat(properties.isSchemaInitialization()).isTrue();
         assertThat(properties.getSchemaLocation()).isEqualTo("classpath:orchestrator-schema.sql");
     }

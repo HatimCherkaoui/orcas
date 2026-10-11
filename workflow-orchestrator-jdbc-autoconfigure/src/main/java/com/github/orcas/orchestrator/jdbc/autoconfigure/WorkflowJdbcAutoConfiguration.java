@@ -22,8 +22,8 @@ public final class WorkflowJdbcAutoConfiguration {
     JdbcWorkflowStateStore workflowJdbcStateStore(
             NamedParameterJdbcTemplate jdbc,
             ObjectMapper mapper,
-            PlatformTransactionManager transactionManager) {
-        return new JdbcWorkflowStateStore(jdbc, mapper, transactionManager);
+            PlatformTransactionManager transactionManager, WorkflowJdbcProperties properties) {
+        return new JdbcWorkflowStateStore(jdbc, mapper, transactionManager, properties.isLocalTransactions());
     }
 
     @Bean

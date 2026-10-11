@@ -14,6 +14,24 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class WorkflowJdbcTelemetryPostProcessorTest {
+    @Test void canOmitPoolAcquisitionSpansWhileKeepingDatabaseCalls() throws Exception {
+        var exporter = InMemorySpanExporter.create();
+        try (var tracer = SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(exporter)).build()) {
+            var factory = new DefaultListableBeanFactory();
+            factory.registerSingleton("telemetry", new OpenTelemetryWorkflowTelemetry(OpenTelemetrySdk.builder().setTracerProvider(tracer).build()));
+            var source = new JdbcDataSource(); source.setURL("jdbc:h2:mem:telemetry-lightweight");
+            var wrapped = (DataSource) new WorkflowJdbcTelemetryPostProcessor(factory.getBeanProvider(WorkflowTelemetry.class), false)
+                    .postProcessAfterInitialization(source, "dataSource");
+            try (var connection = wrapped.getConnection(); var statement = connection.createStatement()) {
+                connection.setAutoCommit(false);
+                statement.execute("select 42");
+                connection.commit();
+                connection.rollback();
+            }
+            assertThat(exporter.getFinishedSpanItems()).extracting(io.opentelemetry.sdk.trace.data.SpanData::getName)
+                    .containsExactly("jdbc.execute", "jdbc.commit", "jdbc.rollback");
+        }
+    }
     @Test void instrumentsAcquisitionQueriesAndTransactionsWithoutExtraConnections() throws Exception {
         var exporter = InMemorySpanExporter.create();
         try (var tracer = SdkTracerProvider.builder().addSpanProcessor(SimpleSpanProcessor.create(exporter)).build()) {

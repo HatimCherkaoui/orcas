@@ -183,8 +183,7 @@ final class WorkflowStepExecutor {
         execution.workflowContext().metadata().identifiers().forEach(result.context().metadata()::put);
         com.github.orcas.orchestrator.core.model.CorrelationIdentifiers.ensure(result.context().metadata());
         execution.output(result.context().businessInput());
-        store.saveStepContext(snapshot(execution));
-        store.updateContext(previous.workflowId(), result.context());
+        store.saveStepResult(snapshot(execution), result.context());
 
         var event = StatusEvent.of(
                 previous.workflowId(),
