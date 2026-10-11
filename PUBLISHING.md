@@ -10,7 +10,8 @@ The parent, BOM, APIs, adapters and starters share one version. Java packages re
 Sign into [Central Publisher Portal](https://central.sonatype.com/) with your GitHub account
 and verify `io.github.hatimcherkaoui` under Namespaces. The project configuration does not
 prove portal ownership. See [Sonatype namespace registration](https://central.sonatype.org/register/namespace/).
-Generate a portal user token. For GitHub Actions, configure these repository secrets:
+Generate a portal user token. For GitHub Actions, configure these secrets in the
+repository's `orcas` environment:
 
 | Secret | Value |
 | --- | --- |
