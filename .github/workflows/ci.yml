@@ -28,7 +28,6 @@ jobs:
         uses: github/codeql-action/init@f3c49fd1ef3281abc41069b3dd22807a60c963f6 # v4
         with:
           languages: java-kotlin,javascript-typescript,actions
-          build-mode: manual
           queries: security-extended
       - name: Verify all Maven modules and Testcontainers scenarios
         run: mvn --batch-mode --no-transfer-progress clean verify
