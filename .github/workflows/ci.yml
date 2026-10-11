@@ -1,24 +1,35 @@
-name: Verify and package POC
+name: Verify, secure and package
 on:
   push:
   pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: workflow-orchestrator-dashboard/package-lock.json
+      - name: Initialize source security analysis
+        uses: github/codeql-action/init@f3c49fd1ef3281abc41069b3dd22807a60c963f6 # v4
+        with:
+          languages: java-kotlin,javascript-typescript,actions
+          build-mode: manual
+          queries: security-extended
       - name: Verify all Maven modules and Testcontainers scenarios
         run: mvn --batch-mode --no-transfer-progress clean verify
       - name: Verify Collector, Elasticsearch and Kibana contracts
@@ -34,13 +45,78 @@ jobs:
       - name: Build dashboard
         working-directory: workflow-orchestrator-dashboard
         run: npm ci && npm test && npm run build
-      - name: Validate library publication artifacts without signing or uploading
-        run: mvn --batch-mode --no-transfer-progress -Drelease -Dgpg.skip=true -DskipTests package
+      - name: Validate unsigned library publication artifacts
+        run: |
+          mvn --batch-mode --no-transfer-progress -Drelease -Dgpg.skip=true -DskipTests package help:effective-pom -Doutput=target/central-effective-pom.xml
+          python3 scripts/verify-central-artifacts.py
+      - name: Verify Maven signing with an ephemeral CI key
+        env:
+          GNUPGHOME: ${{ runner.temp }}/orcas-signing-verification
+        run: |
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key 'Orcas CI verification <ci@example.invalid>' rsa3072 sign 1d
+          mvn --batch-mode --no-transfer-progress -Drelease -DskipTests verify
+          python3 scripts/verify-central-artifacts.py --signed
+          mvn --batch-mode --no-transfer-progress -Drelease -DskipTests -Dcentral.skipPublishing=true deploy
+          python3 scripts/verify-central-bundle.py
+          python3 scripts/verify-consumer.py
+          gpgconf --kill gpg-agent
+          rm -rf "$GNUPGHOME"
       - name: Package first POC
         run: python3 scripts/package-poc.py
-      - uses: actions/upload-artifact@v4
+      - name: Analyze source security
+        uses: github/codeql-action/analyze@f3c49fd1ef3281abc41069b3dd22807a60c963f6 # v4
+        with:
+          output: target/codeql-results
+      - name: Block releases with source security findings
+        run: python3 scripts/check-codeql.py target/codeql-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: source-security-reports
+          path: target/codeql-results/*.sarif
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: orcas-poc
           path: |
             target/orcas-*-poc.zip
             target/orcas-*-poc.zip.sha256
+  security:
+    name: Dependencies and secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Install pinned and checksum-verified scanners
+        run: python3 scripts/install-security-tools.py "$RUNNER_TEMP/security-tools"
+      - name: Scan full Git history for secrets
+        run: |
+          mkdir -p target/security
+          "$RUNNER_TEMP/security-tools/gitleaks" git --config=.gitleaks.toml --redact --report-format json --report-path target/security/gitleaks.json .
+      - name: Resolve Maven dependencies into a CycloneDX SBOM
+        run: >-
+          mvn --batch-mode --no-transfer-progress -DskipTests package
+          org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+          -DincludeTestScope=true -DoutputFormat=json -DskipAttach=true
+      - name: Scan resolved Maven and npm dependencies
+        run: >-
+          "$RUNNER_TEMP/security-tools/osv-scanner" scan source
+          --sbom=target/bom.json
+          --lockfile=workflow-orchestrator-dashboard/package-lock.json
+          --all-vulns --format=json --output-file=target/security/osv.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: dependency-and-secret-reports
+          path: |
+            target/security/*.json
+            target/bom.json
+          if-no-files-found: error

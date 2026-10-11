@@ -1,0 +1,21 @@
+# Reviewed historical demo-only Compose credentials (adminpassword), removed from current code.
+# Exact fingerprints only; future literal credentials remain blocking.
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:170
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:187
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:192
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:232
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:233
+2d365036781b71f3542cb119a541fd0e29546713:docker-compose.yml:curl-auth-user:234
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:170
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:187
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:192
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:231
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:244
+2e1c581f0e7144ca8aa27401d5f53b1ed4f265f3:docker-compose.yml:curl-auth-user:256
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:101
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:141
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:154
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:166
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:77
+8d85fcd664e53bb0f4c27c8b2913f91e01e952ef:docker-compose.yml:curl-auth-user:96
+deb2df25f7085290528733e173e1a19df6cdca85:docker-compose.yml:curl-auth-user:77

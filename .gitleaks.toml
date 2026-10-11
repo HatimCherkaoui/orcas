@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "curl-auth-user"
+[[rules.allowlists]]
+description = "Compose healthchecks reference the ELASTIC_PASSWORD environment variable, not a literal credential."
+regexTarget = "match"
+regexes = ['''(?s)curl\b.*(?:-u|--user)\s+"?elastic:\$\$?(?:\{ELASTIC_PASSWORD\}|ELASTIC_PASSWORD)''']
