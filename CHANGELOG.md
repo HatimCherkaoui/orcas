@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.6.0 — first release candidate
+## 0.6.0 — published 12 October 2026
 
-This development POC reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
+This first Maven Central release reorganizes the project into small integration modules while keeping the workflow engine in a framework-neutral core.
 
 ### Release verification and security
 

@@ -1,8 +1,117 @@
-# Workflow Orchestrator
+<div align="center">
 
-A modular workflow engine for Java 25 and Spring Boot 4.
+# 🐋 ORCAS · Workflow Orchestrator
 
-The design follows one rule: **the application declares workflows; infrastructure is supplied by the modules it chooses**.
+**Declare workflows. Choose your integrations. Observe every execution.**
+
+A modular workflow engine for **Java 25** and **Spring Boot 4**.
+
+[![CI](https://github.com/HatimCherkaoui/orcas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HatimCherkaoui/orcas/actions/workflows/ci.yml)
+[![Maven Central publication](https://github.com/HatimCherkaoui/orcas/actions/workflows/publish.yml/badge.svg)](https://github.com/HatimCherkaoui/orcas/actions/workflows/publish.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.hatimcherkaoui/workflow-orchestrator-core?label=Maven%20Central&color=blue)](https://central.sonatype.com/artifact/io.github.hatimcherkaoui/workflow-orchestrator-core)
+[![Published release](https://img.shields.io/badge/published-v0.6.0-007ec6)](https://github.com/HatimCherkaoui/orcas/tree/v0.6.0)
+[![Javadoc](https://javadoc.io/badge2/io.github.hatimcherkaoui/workflow-orchestrator-core/javadoc.svg)](https://javadoc.io/doc/io.github.hatimcherkaoui/workflow-orchestrator-core/0.6.0)
+[![Java](https://img.shields.io/badge/Java-25%20%7C%2026-ed8b00)](https://github.com/HatimCherkaoui/orcas/blob/main/pom.xml)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1.1-6db33f)](https://github.com/HatimCherkaoui/orcas/blob/main/pom.xml)
+[![License](https://img.shields.io/github/license/HatimCherkaoui/orcas)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/HatimCherkaoui/orcas?style=flat)](https://github.com/HatimCherkaoui/orcas/stargazers)
+[![Forks](https://img.shields.io/github/forks/HatimCherkaoui/orcas?style=flat)](https://github.com/HatimCherkaoui/orcas/forks)
+[![Contributors](https://img.shields.io/github/contributors/HatimCherkaoui/orcas)](https://github.com/HatimCherkaoui/orcas/graphs/contributors)
+[![Issues](https://img.shields.io/github/issues/HatimCherkaoui/orcas)](https://github.com/HatimCherkaoui/orcas/issues)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)](CONTRIBUTING.md)
+
+[Quick start](#quick-start) · [Modules](#modules) · [Documentation](#documentation-and-support) · [Contributing](#contributors-and-contributing)
+
+</div>
+
+---
+
+The application declares workflows; infrastructure is supplied by the modules it chooses.
+
+- **Composable execution:** annotation and functional steps, status routing, asynchronous work, and parallel joins.
+- **Optional infrastructure:** JDBC persistence, Kafka events, REST clients, and Resilience4j adapters.
+- **Operational visibility:** execution correlation, OpenTelemetry integration, a management API, and a React dashboard.
+- **Framework-neutral core:** use the engine without Spring, Kafka, JDBC, or Reactor dependencies.
+
+## Quick start
+
+**Published version: `0.6.0`**, available from Maven Central without a custom repository.
+Use Java 25 or 26. The examples below target a Spring Boot 4.1.1 application.
+
+### 1. Install
+
+For the complete runtime stack, add the umbrella starter:
+
+```xml
+<dependency>
+    <groupId>io.github.hatimcherkaoui</groupId>
+    <artifactId>workflow-orchestrator-spring-boot-starter</artifactId>
+    <version>0.6.0</version>
+</dependency>
+```
+
+Or with Gradle Kotlin DSL:
+
+```kotlin
+implementation("io.github.hatimcherkaoui:workflow-orchestrator-spring-boot-starter:0.6.0")
+```
+
+The umbrella starter includes JDBC, Kafka, REST, resilience, observability, and service integrations;
+configure the database and Kafka for that setup. For the minimal in-memory example below,
+use **`workflow-orchestrator-spring-boot-autoconfigure`** instead of the umbrella starter.
+It supplies core Spring wiring, an in-memory state store, and local event dispatch without
+requiring a database or Kafka. For plain Java, use **`workflow-orchestrator-core`**.
+
+### 2. Declare and route a workflow
+
+Place this configuration in your Spring Boot application's component-scan package:
+
+```java
+import com.github.orcas.orchestrator.core.api.Steps;
+import com.github.orcas.orchestrator.core.builder.PipelineBuilder;
+import com.github.orcas.orchestrator.core.builder.StatusCriteria;
+import com.github.orcas.orchestrator.core.builder.StepCatalog;
+import com.github.orcas.orchestrator.core.builder.WorkflowDefinitionProvider;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class GreetingWorkflowConfiguration {
+    @Bean
+    WorkflowDefinitionProvider greetingWorkflow(StepCatalog steps) {
+        return () -> new PipelineBuilder("greeting", steps)
+                .initialize().on(StatusCriteria.onStart())
+                .then(Steps.step("greet", context -> {
+                    System.out.println("Hello, " + context.businessInput());
+                    return context;
+                }))
+                .build();
+    }
+}
+```
+
+### 3. Start an execution
+
+Add this bean to the same configuration (with these imports):
+
+```java
+import com.github.orcas.orchestrator.core.engine.WorkflowEngine;
+import com.github.orcas.orchestrator.core.model.WorkflowContext;
+import org.springframework.boot.ApplicationRunner;
+
+@Bean
+ApplicationRunner runGreeting(WorkflowEngine engine) {
+    return args -> engine.start("greeting", WorkflowContext.of("ORCAS"));
+}
+```
+
+Start your application to print `Hello, ORCAS`. The routing definition is registered by
+Spring; `WorkflowEngine.start` creates an execution and dispatches its initial event.
+The in-memory store is useful for getting started; choose the JDBC starter for persisted state.
+
+See the [order workflow example](example-app/src/main/java/com/github/orcas/demo/config/OrderWorkflow.java)
+and its [routing definition](example-app/src/main/java/com/github/orcas/demo/config/OrderWorkflowDefinition.java)
+for constructor injection, annotation-based steps, and multi-step execution.
 
 ## Modules
 
@@ -25,33 +134,6 @@ The design follows one rule: **the application declares workflows; infrastructur
 | `workflow-orchestrator-dashboard` | React dashboard application | Using the graphical UI |
 
 Feature modules have their own API where useful. The `*-starter` artifacts are optional convenience bundles; applications can import only the adapters they need. The umbrella Spring Boot starter includes the standard integrations.
-
-## Define a workflow
-
-Names normally come from annotations, so workflow classes do not repeat configuration already present in the source code:
-
-```java
-@Workflow
-final class OrderWorkflow {
-    @WorkflowStep
-    Order validate(Order order) {
-        return order;
-    }
-
-    @WorkflowStep
-    CompletionStage<Order> reserve(Order order) {
-        return inventory.reserve(order);
-    }
-}
-```
-
-Functional steps are first-class too:
-
-```java
-var step = Steps.step(context -> validate(context.businessInput()));
-```
-
-Built-in Spring configuration supplies the registry, executor, publisher and extension beans. Application code stays focused on workflow behavior.
 
 ## Select only what you use
 
@@ -170,7 +252,8 @@ not an EC2/RDS capacity guarantee.
 
 ## Build and validate
 
-Use JDK 25 or 26, Maven 3.9.6+, Node.js 20+ and Docker (including Colima).
+Use JDK 25 or 26, Maven 3.9.6–3.9.x (CI uses 3.9.11), Node.js 20+ and Docker (including Colima).
+Maven 3.10 is currently incompatible with the Central publishing plugin used by this project.
 
 ```bash
 ./verify.sh
@@ -212,8 +295,8 @@ the parent, BOM and library modules for Maven publication. Applications are excl
 that reactor and also have deployment disabled.
 
 Maven coordinates use `io.github.hatimcherkaoui`; Java imports continue to use
-`com.github.orcas`. Version `0.6.0` is the first release candidate. Check [Maven Central](https://central.sonatype.com/namespace/io.github.hatimcherkaoui)
-for publication availability; install locally with `mvn install` until the release is published.
+`com.github.orcas`. Version `0.6.0` is published on [Maven Central](https://central.sonatype.com/namespace/io.github.hatimcherkaoui).
+Library artifacts include source and Javadoc JARs, signatures, and checksums.
 
 ## Correlation and observability
 
@@ -230,195 +313,31 @@ for setup, extension APIs, field names, resource limits and verification command
 
 - [Architecture](docs/architecture.md) and [module selection](docs/module-selection.md)
 - [Publishing](PUBLISHING.md) and [contributing](CONTRIBUTING.md)
+- [Runtime tuning and load testing](docs/runtime-tuning.md)
+- [Security policy](SECURITY.md) and [Apache 2.0 license](LICENSE)
 - [Changes](CHANGELOG.md)
 - [GitHub issues](https://github.com/HatimCherkaoui/orcas/issues)
 - Maintainer: [Hatim Cherkaoui](https://github.com/HatimCherkaoui)
 
-Licensed under [Apache 2.0](LICENSE).
 
-### Faster Compose builds and verification
+## Contributors and contributing
 
-Compose builds both backend JARs once through `Dockerfile.backend`, using two
-Maven reactor workers and a persistent BuildKit dependency cache. The frontend
-build runs independently and caches npm downloads. Context allowlists exclude
-tests, local output, IDE files and documentation from image builds. Runtime
-images contain only their application JAR or static frontend assets.
+Maintained by [Hatim Cherkaoui](https://github.com/HatimCherkaoui).
 
-Image packaging skips test compilation; run `./verify.sh` before publishing.
-Verification runs Maven modules with two workers and frontend checks concurrently,
-stopping the other task on failure. Test methods within a module stay sequential
-because integration scenarios share database and Kafka state. Set `MAVEN_THREADS`
-to tune concurrency and `VERIFY_TIMEOUT_SECONDS` to change the 900-second limit.
-Image builds stop after 300 seconds; Docker build arguments `MAVEN_THREADS` and
-`BUILD_TIMEOUT_SECONDS` are configurable. Maven uses `package`/`verify`, avoiding
-unnecessary local-repository installs and clean rebuilds.
+<a href="https://github.com/HatimCherkaoui"><img src="https://avatars.githubusercontent.com/u/38525968?v=4" width="64" height="64" alt="Hatim Cherkaoui, maintainer"></a>
 
-For a bounded build and startup, run `python3 scripts/compose-up.py prod`.
-It requires Buildx, stops on the first failed command, caps the whole build at
-450 seconds and startup at 600 seconds (configurable with
-`COMPOSE_BUILD_TIMEOUT_SECONDS` / `COMPOSE_START_TIMEOUT_SECONDS`).
+Thanks to everyone who contributes code, documentation, bug reports, and ideas.
+See the [complete contributor history](https://github.com/HatimCherkaoui/orcas/graphs/contributors).
 
-In IntelliJ's Docker Compose run configuration, use `docker-compose.yml` and the
-chosen profile with **Build images** enabled. Remove any redundant Maven
-`clean install` before-launch tasks; Compose builds the JARs itself. Existing
-personal IDE configurations are not checked into this repository.
+To contribute:
 
-On a Colima VM with only 4 GB RAM, the full production stack competes with the
-Maven builder for memory. For a rebuild that changes Java sources, temporarily
-stop the two application containers, then run the bounded launcher (which
-restarts them):
+1. Open an [issue](https://github.com/HatimCherkaoui/orcas/issues) to describe a bug or discuss a proposed feature.
+2. Fork the repository and create a branch for your change.
+3. Run the relevant checks and `./verify.sh`, then open a pull request with the problem, solution, and validation.
 
-```sh
-docker compose --profile prod stop example-app workflow-management-service
-python3 scripts/compose-up.py prod
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup and module boundaries.
+Report security vulnerabilities using [SECURITY.md](SECURITY.md).
 
-Volumes and infrastructure services are retained. This is a local development
-workflow; schedule downtime appropriately when using it on a deployed instance.
+## License
 
-
-### Colima resource tuning
-
-The included Compose stack targets a small local VM. Kafka uses a 256 MiB heap,
-a 32 MiB cleaner deduplication buffer, two network threads and four I/O threads.
-The example runtime uses two status consumers and one replay consumer; management
-publishes replay commands but does not consume runtime topics. Existing topic
-partitions and consumer offsets are preserved. Producer acknowledgements and
-idempotence remain enabled.
-
-Workflow listener settings under `workflow.orchestrator.kafka`:
-
-| Setting | Default | Purpose |
-| --- | --- | --- |
-| `concurrency` | 2 | Status consumers per application |
-| `replay-concurrency` | 1 | Independent replay consumers |
-| `max-poll-records` | 25 | Limit work between polls |
-| `fetch-max-bytes` | 4194304 | Fetch response target per consumer |
-| `max-partition-fetch-bytes` | 1048576 | Fetch target per partition |
-| `consumers-enabled` | true | Disable consumers in management-only deployments |
-| `observation-enabled` | false | Optional Spring Kafka observation in addition to Orcas spans |
-
-Fetch byte limits are targets: Kafka can return an oversized first batch to make
-progress. Size payloads and producer buffers accordingly. Small poll batches
-reduce the risk of long synchronous workflow steps exceeding the poll interval;
-configure `spring.kafka.consumer.properties.max.poll.interval.ms` for the maximum
-processing time of an entire poll batch, including downstream timeouts/retries.
-
-Compose overrides include `WORKFLOW_KAFKA_CONCURRENCY`, `WORKFLOW_ASYNC_CONCURRENCY`,
-`DB_POOL_MAX_SIZE`, `KAFKA_HEAP_OPTS`, `KAFKA_JVM_PERFORMANCE_OPTS`,
-`KAFKA_NETWORK_THREADS`, `KAFKA_IO_THREADS`, `KAFKA_RETENTION_HOURS`,
-`ORCAS_JAVA_TOOL_OPTIONS`, and `ES_JAVA_OPTS`. The local broker retention defaults
-to seven days; increase it for longer outage recovery windows. JVM processor counts
-are bounded to two to avoid excessive worker and garbage collector threads.
-WireMock keeps at most 1,000 journal entries. Application producer buffers use
-8 MiB and LZ4 compression. Database pools default to six connections for the
-Compose example and four for management.
-
-Use `--profile dev` when Elasticsearch and Kibana are unnecessary. The full
-`prod` demonstration also hosts both observability services; on a two CPU,
-4 GiB VM they compete with workflow execution. These settings reduce resource
-contention but do not provide production cluster redundancy or a throughput
-guarantee. Scale runtime consumers, pools and broker resources together after
-measuring latency and consumer lag on the target infrastructure.
-
-
-### Load testing the full Compose stack
-
-With `docker compose --profile prod up -d` healthy, run:
-
-```sh
-python3 scripts/compose-load.py --stages 50:10,200:25   --output /private/tmp/orcas-compose-prod-load.json
-```
-
-This creates an isolated inventory SKU and 250 orders using the seeded customer,
-then launches 250 payment-success callbacks. It leaves the
-orders and workflow history available for dashboard investigation. Unique request
-IDs and a shared correlation ID isolate each run from existing records. No tables,
-Kafka offsets or WireMock scenarios are reset.
-
-The script verifies successful persisted workflows, unique orders, payment records
-and confirmed business states. It reports HTTP and workflow duration mean/p50/p95/p99,
-throughput, and sampled container CPU/memory. `--timeout` sets the completion deadline
-per leg; HTTP requests have a 65-second timeout. Completion polling every three seconds
-makes elapsed throughput conservative. Results measure this Compose deployment and
-its mock services; they are not a cloud capacity estimate.
-
-With `--verify-traces`, the load test also requires exactly one successful native
-Elasticsearch completion per workflow and reports its end-to-end latency, including
-Kafka delivery to the terminal-event consumer. The database duration uses the
-terminal event timestamp; completion trace latency additionally includes final
-consumer processing. Set `ELASTIC_PASSWORD` for a customized Elasticsearch password.
-Nested executor submissions run on their current worker to preserve the concurrency
-bound without blocking on their own permits. `RUNNING_ASYNC` is an active state and
-does not produce workflow completion records.
-
-The local broker uses a JVM-free Kafka protocol health probe, a 30-second broker
-session lease and a 10-second controller request timeout. Relative CPU shares favor
-Kafka over analytics during contention. Publishers await Kafka’s definitive result,
-bounded by `delivery.timeout.ms=30000`, with request and buffer waits of 10 seconds.
-See the [Kafka broker configuration](https://kafka.apache.org/43/configuration/broker-configs/).
-
-The 10 October 2026 full-profile load run on Colima (2 CPUs, 4 GiB) completed
-500/500 workflows and confirmed 250 orders and payments, with zero final status
-consumer lag. At 25 concurrent clients, persisted workflow p95 duration was 28.2s
-for orders and 13.0s for callbacks. Full observability validation failed: the
-2,048-span OpenTelemetry queue overflowed, reporting 16,555 dropped spans; only
-315/500 completion traces reached Elasticsearch. That run exposed a telemetry export limitation, addressed by the queue and
-indexing changes below; validate completeness for each new load cohort. These results are a local burst
-measurement with WireMock, not a production capacity guarantee.
-
-### Persisted transition and telemetry cost
-
-Workflow creation and step snapshot persistence each use one PostgreSQL command,
-including their audit rows. JDBC step results persist their step snapshot and workflow context in one
-retried transaction. Context and metadata updates, audit snapshots and the workflow
-timestamp share one PostgreSQL command. Status transitions also combine the step
-mutation, workflow status, metadata and their audit rows in one command. Step-context reads join the workflow name
-instead of borrowing another connection inside the result mapper. Custom state
-stores retain the default `saveStepResult` fallback.
-
-Standalone orchestration writes use a JDBC transaction manager, avoiding Hibernate
-session creation for each transition. Writes inside an existing business transaction
-still use the application's manager and roll back with the business operation.
-Set `workflow.orchestrator.jdbc.local-transactions=false` when a custom transaction
-manager must handle standalone state writes too.
-
-The Compose runtime uses four status consumers, four bounded async workers and six
-database connections. The library consumer default remains two. Producer linger is
-zero by default in the example apps (`KAFKA_PRODUCER_LINGER_MS` can override it).
-Application spans export in batches up to 2,048 with an 8,192-span queue and a
-500 ms scheduling delay, configured through `OTEL_SPAN_BATCH_SIZE`,
-`OTEL_SPAN_QUEUE_SIZE` and `OTEL_SPAN_SCHEDULE_DELAY`. The collector batches up to
-2,048 records, waiting at most five seconds for small batches. These bounded settings reduce request overhead and absorb bursts;
-exporter queues still require monitoring. The collector uses synchronous bulk export
-with two consumers and a bounded, disk-backed queue of 128 batches per signal.
-This removes the legacy buffer handoff's five-second timeout and survives collector
-restarts while Elasticsearch catches up. All SQL mutations remain audited and
-Kafka acknowledgement is still required before progressing workflows.
-
-The full profile reserves a 512 MiB Elasticsearch heap to reduce indexing GC
-pressure. Backend, database and observability health probes run every 30 seconds; HTTP probes have explicit
-connection and response deadlines, avoiding abandoned curl processes under load.
-Metrics use `metrics-orcas-runtime` with a dedicated template that preserves dotted
-field names (`subobjects: false`); this prevents conflicts between names such as
-`records.lag` and `records.lag.max`. Historical streams remain accessible through
-the `metrics-orcas-*` data view. See [Elastic's metrics mapping guidance](https://www.elastic.co/guide/en/elasticsearch/reference/8.15/subobjects.html).
-`--trace-timeout` defaults to 120 seconds to allow asynchronous indexing to catch up
-after the last business workflow finishes; it does not change measured duration.
-
-SQL execution, commit and rollback spans remain enabled. Pool acquisition spans
-are optional (`workflow.orchestrator.observability.jdbc-connection-spans=true`);
-Hikari metrics retain connection saturation and wait measurements without a span
-for every borrow. Identifier alias lookups and registered-key sets are cached.
-Kafka fetch limits are applied to each actual listener container, since Spring
-does not copy consumer properties from the listener factory configuration.
-
-Trace and log indices retain complete OTLP payloads in `_source`, while indexing
-normalized identifiers, workflow, operation, duration, outcome and event type.
-Raw `Attributes`, `Resource`, `Scope`, `Link` and `Event` objects are not indexed.
-Use root `httpStatusCode`, `dbOperation`, `exceptionType` and `exceptionMessage`
-fields for searches. Templates use a 10-second refresh interval to reduce segment
-creation; allow this delay when investigating recent executions. ECS metrics also
-normalize flat `service.name` fields, and bucketless timers retain sum and count
-without requiring percentile buckets. Percentiles require bucketed histograms or
-individual duration spans.
+Distributed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for notices.

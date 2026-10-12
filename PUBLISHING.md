@@ -101,7 +101,7 @@ they do not establish that undiscovered vulnerabilities are absent.
 
 ## Publish a release
 
-The reactor is prepared as release candidate `0.6.0`. For future releases, update the
+Version `0.6.0` was published to Maven Central on 12 October 2026. For future releases, update the
 version throughout the reactor, inspect changes and update the changelog and reproducible
 archive timestamp. Central releases must not end in `-SNAPSHOT`; the release profile
 rejects snapshots in the project and resolved dependencies.

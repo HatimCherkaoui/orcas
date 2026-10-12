@@ -1,6 +1,6 @@
 # Contributing
 
-Use JDK 25 or 26 and Maven 3.9.6+. The dashboard uses Node.js 20+.
+Use JDK 25 or 26 and Maven 3.9.6–3.9.x (CI uses 3.9.11). The dashboard uses Node.js 20+.
 Docker must be running for integration tests; [Colima setup](example-app/TESTCONTAINERS.md)
 explains the Testcontainers socket configuration.
 
