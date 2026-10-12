@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐋 ORCAS · Workflow Orchestrator
+# 🫍 ORCAS · Workflow Orchestrator
 
 **Declare workflows. Choose your integrations. Observe every execution.**
 
@@ -43,6 +43,7 @@ Use Java 25 or 26. The examples below target a Spring Boot 4.1.1 application.
 For the complete runtime stack, add the umbrella starter:
 
 ```xml
+
 <dependency>
     <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-spring-boot-starter</artifactId>
@@ -115,31 +116,34 @@ for constructor injection, annotation-based steps, and multi-step execution.
 
 ## Modules
 
-| Artifact | Purpose | Use when |
-|---|---|---|
-| `workflow-orchestrator-core` | Engine, context, routing DSL and extension contracts | Always |
-| `workflow-orchestrator-spring-boot-autoconfigure` | Spring IoC integration and default engine wiring | Using Spring Boot |
-| `workflow-orchestrator-spring-boot-starter` | Core Spring Boot convenience bundle | You want the standard setup |
-| `workflow-orchestrator-rest` | REST annotations and contracts | Defining HTTP workflow steps |
-| `workflow-orchestrator-rest-autoconfigure` / `-starter` | WebClient implementation and auto-configuration | Calling external HTTP APIs |
-| `workflow-orchestrator-resilience` | Resilience annotations and contracts | Adding circuit breakers/fallbacks |
-| `workflow-orchestrator-resilience-autoconfigure` / `-starter` | Resilience4j integration | Using the standard resilience adapter |
-| `workflow-orchestrator-jdbc-autoconfigure` / `-starter` | JDBC workflow state store | Persisting workflow state in SQL |
-| `workflow-orchestrator-kafka-autoconfigure` / `-starter` | Kafka events and listeners | Event-driven workflows |
-| `workflow-orchestrator-observability-autoconfigure` / `-starter` | MDC and operational hooks | Adding execution tracing/log context |
-| `workflow-orchestrator-service` | Framework-neutral query/admin API | Building operational tooling |
-| `workflow-orchestrator-service-autoconfigure` / `-starter` | Spring MVC + JDBC operational API | Exposing the service API over HTTP |
-| `workflow-orchestrator-dashboard-service` | Dashboard backend contracts | Connecting a dashboard to external messaging |
-| `workflow-orchestrator-dashboard-service-autoconfigure` / `-starter` | Dashboard backend integration | Running the bundled dashboard service |
-| `workflow-orchestrator-dashboard` | React dashboard application | Using the graphical UI |
+| Artifact                                                             | Purpose                                              | Use when                                     |
+|----------------------------------------------------------------------|------------------------------------------------------|----------------------------------------------|
+| `workflow-orchestrator-core`                                         | Engine, context, routing DSL and extension contracts | Always                                       |
+| `workflow-orchestrator-spring-boot-autoconfigure`                    | Spring IoC integration and default engine wiring     | Using Spring Boot                            |
+| `workflow-orchestrator-spring-boot-starter`                          | Core Spring Boot convenience bundle                  | You want the standard setup                  |
+| `workflow-orchestrator-rest`                                         | REST annotations and contracts                       | Defining HTTP workflow steps                 |
+| `workflow-orchestrator-rest-autoconfigure` / `-starter`              | WebClient implementation and auto-configuration      | Calling external HTTP APIs                   |
+| `workflow-orchestrator-resilience`                                   | Resilience annotations and contracts                 | Adding circuit breakers/fallbacks            |
+| `workflow-orchestrator-resilience-autoconfigure` / `-starter`        | Resilience4j integration                             | Using the standard resilience adapter        |
+| `workflow-orchestrator-jdbc-autoconfigure` / `-starter`              | JDBC workflow state store                            | Persisting workflow state in SQL             |
+| `workflow-orchestrator-kafka-autoconfigure` / `-starter`             | Kafka events and listeners                           | Event-driven workflows                       |
+| `workflow-orchestrator-observability-autoconfigure` / `-starter`     | MDC and operational hooks                            | Adding execution tracing/log context         |
+| `workflow-orchestrator-service`                                      | Framework-neutral query/admin API                    | Building operational tooling                 |
+| `workflow-orchestrator-service-autoconfigure` / `-starter`           | Spring MVC + JDBC operational API                    | Exposing the service API over HTTP           |
+| `workflow-orchestrator-dashboard-service`                            | Dashboard backend contracts                          | Connecting a dashboard to external messaging |
+| `workflow-orchestrator-dashboard-service-autoconfigure` / `-starter` | Dashboard backend integration                        | Running the bundled dashboard service        |
+| `workflow-orchestrator-dashboard`                                    | React dashboard application                          | Using the graphical UI                       |
 
-Feature modules have their own API where useful. The `*-starter` artifacts are optional convenience bundles; applications can import only the adapters they need. The umbrella Spring Boot starter includes the standard integrations.
+Feature modules have their own API where useful. The `*-starter` artifacts are optional convenience bundles;
+applications can import only the adapters they need. The umbrella Spring Boot starter includes the standard
+integrations.
 
 ## Select only what you use
 
 Use the BOM to keep versions aligned:
 
 ```xml
+
 <dependencyManagement>
     <dependencies>
         <dependency>
@@ -156,17 +160,18 @@ Use the BOM to keep versions aligned:
 A typical JDBC + REST application can use either the individual starters or the all-in-one Spring Boot starter:
 
 ```xml
+
 <dependency>
     <groupId>io.github.hatimcherkaoui</groupId>
     <artifactId>workflow-orchestrator-spring-boot-autoconfigure</artifactId>
 </dependency>
 <dependency>
-    <groupId>io.github.hatimcherkaoui</groupId>
-    <artifactId>workflow-orchestrator-jdbc-starter</artifactId>
+<groupId>io.github.hatimcherkaoui</groupId>
+<artifactId>workflow-orchestrator-jdbc-starter</artifactId>
 </dependency>
 <dependency>
-    <groupId>io.github.hatimcherkaoui</groupId>
-    <artifactId>workflow-orchestrator-rest-starter</artifactId>
+<groupId>io.github.hatimcherkaoui</groupId>
+<artifactId>workflow-orchestrator-rest-starter</artifactId>
 </dependency>
 ```
 
@@ -177,12 +182,14 @@ Add Kafka, resilience, observability or the operational service only when the ap
 HTTP-specific annotations live outside core:
 
 ```java
+
 @WorkflowStep
 @WorkflowRestCall(mapper = ReserveMapper.class)
 Mono<ResponseEntity<Reservation>> reserve(ReservationRequest request);
 ```
 
-Mappers and response consumers are resolved through Spring IoC. Constructor-injected application beans work without manual reflection or factory configuration.
+Mappers and response consumers are resolved through Spring IoC. Constructor-injected application beans work without
+manual reflection or factory configuration.
 
 ## Configuration
 
@@ -295,7 +302,8 @@ the parent, BOM and library modules for Maven publication. Applications are excl
 that reactor and also have deployment disabled.
 
 Maven coordinates use `io.github.hatimcherkaoui`; Java imports continue to use
-`com.github.orcas`. Version `0.6.0` is published on [Maven Central](https://central.sonatype.com/namespace/io.github.hatimcherkaoui).
+`com.github.orcas`. Version `0.6.0` is published
+on [Maven Central](https://central.sonatype.com/namespace/io.github.hatimcherkaoui).
 Library artifacts include source and Javadoc JARs, signatures, and checksums.
 
 ## Correlation and observability
@@ -318,7 +326,6 @@ for setup, extension APIs, field names, resource limits and verification command
 - [Changes](CHANGELOG.md)
 - [GitHub issues](https://github.com/HatimCherkaoui/orcas/issues)
 - Maintainer: [Hatim Cherkaoui](https://github.com/HatimCherkaoui)
-
 
 ## Contributors and contributing
 
